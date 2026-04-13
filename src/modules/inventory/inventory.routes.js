@@ -7,12 +7,12 @@ const perm = require('../../middlewares/permission');
 router.use(authenticate);
 
 // Stock Adjustments
-router.get('/adjustments', perm('master.read'), c.getAdjustments);
-router.get('/adjustments/:id', perm('master.read'), c.getAdjustmentById);
-router.post('/adjustments', perm('master.create'), c.createAdjustment);
-router.delete('/adjustments/:id', perm('master.create'), c.deleteAdjustment);
+router.get('/adjustments', perm('stock-adjustment.read'), c.getAdjustments);
+router.get('/adjustments/:id', perm('stock-adjustment.read'), c.getAdjustmentById);
+router.post('/adjustments', perm('stock-adjustment.create'), c.createAdjustment);
+router.delete('/adjustments/:id', perm('stock-adjustment.create'), c.deleteAdjustment);
 
 // Stock Movements
-router.get('/stock-movements', perm('master.read'), c.getStockMovements);
+router.get('/stock-movements', perm('stock-movement.read'), c.getStockMovements);
 
 module.exports = router;

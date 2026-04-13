@@ -7,7 +7,13 @@ const Product = require('./Product');
 const RawMaterial = require('./RawMaterial');
 const Supplier = require('./Supplier');
 const Customer = require('./Customer');
+const Salesman = require('./Salesman');
+const Position = require('./Position');
+const Employee = require('./Employee');
+const { ProductionPlan, ProductionPlanDetail } = require('./ProductionPlan');
+const { FinishedGoodsReceipt, FinishedGoodsReceiptDetail } = require('./FinishedGoodsReceipt');
 const ChartOfAccount = require('./ChartOfAccount');
+const { MaterialIssue, MaterialIssueDetail } = require('./MaterialIssue');
 const { Journal, JournalDetail } = require('./Journal');
 const { PurchaseRequest, PurchaseRequestDetail } = require('./PurchaseRequest');
 const { Purchase, PurchaseDetail, PurchasePayment } = require('./Purchase');
@@ -58,7 +64,11 @@ GoodsReceiptDetail.belongsTo(RawMaterial, { foreignKey: 'raw_material_id', as: '
 
 // Sales
 Sale.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
+Sale.belongsTo(Salesman, { foreignKey: 'salesman_id', as: 'salesman' });
 Sale.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+Salesman.hasMany(Sale, { foreignKey: 'salesman_id', as: 'sales' });
+Employee.belongsTo(Position, { foreignKey: 'position_id', as: 'position' });
+Position.hasMany(Employee, { foreignKey: 'position_id', as: 'employees' });
 SaleDetail.belongsTo(Sale, { foreignKey: 'sale_id' });
 Sale.hasMany(SaleDetail, { foreignKey: 'sale_id', as: 'details' });
 SaleDetail.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
@@ -81,10 +91,37 @@ CashTransaction.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
 StockAdjustment.hasMany(StockAdjustmentDetail, { foreignKey: 'stock_adjustment_id', as: 'details' });
 StockAdjustmentDetail.belongsTo(StockAdjustment, { foreignKey: 'stock_adjustment_id' });
 StockAdjustment.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+StockAdjustmentDetail.belongsTo(RawMaterial, { foreignKey: 'item_id', as: 'rawMaterial' });
+StockAdjustmentDetail.belongsTo(Product, { foreignKey: 'item_id', as: 'product' });
+
+// Material Issue
+MaterialIssue.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+MaterialIssue.belongsTo(User, { foreignKey: 'approved_by', as: 'approver' });
+MaterialIssue.belongsTo(Employee, { foreignKey: 'recipient_employee_id', as: 'recipientEmployee' });
+Employee.hasMany(MaterialIssue, { foreignKey: 'recipient_employee_id', as: 'materialIssues' });
+MaterialIssue.hasMany(MaterialIssueDetail, { foreignKey: 'material_issue_id', as: 'details' });
+MaterialIssueDetail.belongsTo(MaterialIssue, { foreignKey: 'material_issue_id' });
+MaterialIssueDetail.belongsTo(RawMaterial, { foreignKey: 'raw_material_id', as: 'rawMaterial' });
+MaterialIssueDetail.belongsTo(Unit, { foreignKey: 'unit_id', as: 'unit' });
+
+// Production Plan
+ProductionPlan.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+ProductionPlan.belongsTo(User, { foreignKey: 'approved_by', as: 'approver' });
+ProductionPlan.hasMany(ProductionPlanDetail, { foreignKey: 'production_plan_id', as: 'details' });
+ProductionPlanDetail.belongsTo(ProductionPlan, { foreignKey: 'production_plan_id', as: 'plan' });
+ProductionPlanDetail.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
+
+// Finished Goods Receipt
+FinishedGoodsReceipt.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+FinishedGoodsReceipt.belongsTo(User, { foreignKey: 'approved_by', as: 'approver' });
+FinishedGoodsReceipt.hasMany(FinishedGoodsReceiptDetail, { foreignKey: 'finished_goods_receipt_id', as: 'details' });
+FinishedGoodsReceiptDetail.belongsTo(FinishedGoodsReceipt, { foreignKey: 'finished_goods_receipt_id', as: 'receipt' });
+FinishedGoodsReceiptDetail.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
+FinishedGoodsReceiptDetail.belongsTo(ProductionPlanDetail, { foreignKey: 'production_plan_detail_id', as: 'productionPlanDetail' });
 
 module.exports = {
     Role, Permission, RolePermission, User,
-    Unit, Product, RawMaterial, Supplier, Customer, ChartOfAccount,
+    Unit, Product, RawMaterial, Supplier, Customer, Salesman, Position, Employee, ChartOfAccount,
     Journal, JournalDetail,
     PurchaseRequest, PurchaseRequestDetail,
     Purchase, PurchaseDetail, PurchasePayment,
@@ -92,4 +129,7 @@ module.exports = {
     Sale, SaleDetail, SalePayment,
     CashTransaction, StockAdjustment, StockAdjustmentDetail,
     StockMovement,
+    MaterialIssue, MaterialIssueDetail,
+    ProductionPlan, ProductionPlanDetail,
+    FinishedGoodsReceipt, FinishedGoodsReceiptDetail,
 };

@@ -9,6 +9,10 @@ const salesRoutes = require('./modules/sales/sales.routes');
 const financeRoutes = require('./modules/finance/finance.routes');
 const reportsRoutes = require('./modules/reports/reports.routes');
 const inventoryRoutes = require('./modules/inventory/inventory.routes');
+const materialIssueRoutes = require('./modules/material-issues/material-issues.routes');
+const productionPlanRoutes = require('./modules/production-plans/production-plans.routes');
+const productionRealizationRoutes = require('./modules/production-realizations/production-realizations.routes');
+const finishedGoodsReceiptRoutes = require('./modules/finished-goods-receipts/finished-goods-receipts.routes');
 const errorHandler = require('./middlewares/errorHandler');
 
 const app = express();
@@ -28,6 +32,10 @@ app.use('/api/sales', salesRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/inventory', inventoryRoutes);
+app.use('/api/material-issues', materialIssueRoutes);
+app.use('/api/production-plans', productionPlanRoutes);
+app.use('/api/production-realizations', productionRealizationRoutes);
+app.use('/api/finished-goods-receipts', finishedGoodsReceiptRoutes);
 
 // 404 handler
 app.use((req, res) => {

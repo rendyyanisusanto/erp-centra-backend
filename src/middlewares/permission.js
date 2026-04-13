@@ -8,7 +8,7 @@ const requirePermission = (requiredPermission) => {
         if (!permissions.includes(requiredPermission)) {
             return res.status(403).json({
                 success: false,
-                message: `Access denied. Required permission: ${requiredPermission}`,
+                message: `Akses ditolak. Izin yang dibutuhkan: ${requiredPermission}`,
             });
         }
         next();

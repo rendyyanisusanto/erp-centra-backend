@@ -20,8 +20,28 @@ const seed = async () => {
 
         // Permissions
         const perms = [
-            { name: 'master.read', module: 'master' },
-            { name: 'master.create', module: 'master' },
+            { name: 'role.read', module: 'master' },
+            { name: 'role.create', module: 'master' },
+            { name: 'user.read', module: 'master' },
+            { name: 'user.create', module: 'master' },
+            { name: 'unit.read', module: 'master' },
+            { name: 'unit.create', module: 'master' },
+            { name: 'product.read', module: 'master' },
+            { name: 'product.create', module: 'master' },
+            { name: 'raw-material.read', module: 'master' },
+            { name: 'raw-material.create', module: 'master' },
+            { name: 'supplier.read', module: 'master' },
+            { name: 'supplier.create', module: 'master' },
+            { name: 'customer.read', module: 'master' },
+            { name: 'customer.create', module: 'master' },
+            { name: 'salesman.read', module: 'master' },
+            { name: 'salesman.create', module: 'master' },
+            { name: 'position.read', module: 'master' },
+            { name: 'position.create', module: 'master' },
+            { name: 'employee.read', module: 'master' },
+            { name: 'employee.create', module: 'master' },
+            { name: 'coa.read', module: 'master' },
+            { name: 'coa.create', module: 'master' },
             { name: 'purchase.read', module: 'purchase' },
             { name: 'purchase.create', module: 'purchase' },
             { name: 'purchase.approve', module: 'purchase' },
@@ -32,7 +52,33 @@ const seed = async () => {
             { name: 'sales.read', module: 'sales' },
             { name: 'sales.create', module: 'sales' },
             { name: 'journal.read', module: 'finance' },
-            { name: 'report.view', module: 'reports' },
+            { name: 'journal.create', module: 'finance' },
+            { name: 'stock-adjustment.read', module: 'inventory' },
+            { name: 'stock-adjustment.create', module: 'inventory' },
+            { name: 'stock-movement.read', module: 'inventory' },
+            { name: 'material-issue.read', module: 'material-issues' },
+            { name: 'material-issue.create', module: 'material-issues' },
+            { name: 'material-issue.approve', module: 'material-issues' },
+            { name: 'production-plan.read', module: 'production-plans' },
+            { name: 'production-plan.create', module: 'production-plans' },
+            { name: 'production-plan.approve', module: 'production-plans' },
+            { name: 'production-realization.read', module: 'production-realizations' },
+            { name: 'production-realization.update', module: 'production-realizations' },
+            { name: 'finished-goods-receipt.read', module: 'finished-goods-receipts' },
+            { name: 'finished-goods-receipt.create', module: 'finished-goods-receipts' },
+            { name: 'finished-goods-receipt.approve', module: 'finished-goods-receipts' },
+            { name: 'report.profit-loss', module: 'reports' },
+            { name: 'report.payables', module: 'reports' },
+            { name: 'report.receivables', module: 'reports' },
+            { name: 'report.ledger', module: 'reports' },
+            { name: 'report.raw-material-stock-card', module: 'reports' },
+            { name: 'report.stock-opname', module: 'reports' },
+            { name: 'report.purchase-order-recap', module: 'reports' },
+            { name: 'report.supplier-payable-statement', module: 'reports' },
+            { name: 'report.stock-opname-product', module: 'reports' },
+            { name: 'report.fg-monthly-stock', module: 'reports' },
+            { name: 'report.material-issues', module: 'reports' },
+            { name: 'report.production', module: 'reports' },
         ];
         const createdPerms = await Permission.bulkCreate(perms, { returning: true });
 
@@ -41,15 +87,29 @@ const seed = async () => {
         await RolePermission.bulkCreate(adminPermRows);
 
         // Manager gets most permissions
-        const managerPerms = createdPerms.filter(p => !['master.create'].includes(p.name));
+        const managerPerms = createdPerms.filter(p => ![
+            'role.create', 'user.create', 'unit.create', 'product.create', 'raw-material.create',
+            'supplier.create', 'customer.create', 'salesman.create', 'position.create',
+            'employee.create', 'coa.create',
+        ].includes(p.name));
         await RolePermission.bulkCreate(managerPerms.map(p => ({ role_id: managerRole.id, permission_id: p.id })));
 
         // Staff: purchase + sales only
-        const staffPerms = createdPerms.filter(p => ['purchase.read', 'purchase.create', 'goods-receipt.read', 'goods-receipt.create', 'sales.read', 'sales.create'].includes(p.name));
+        const staffPerms = createdPerms.filter(p => [
+            'purchase.read', 'purchase.create', 'goods-receipt.read', 'goods-receipt.create',
+            'sales.read', 'sales.create',
+            'raw-material.read', 'product.read', 'supplier.read', 'customer.read',
+            'salesman.read', 'unit.read', 'coa.read',
+        ].includes(p.name));
         await RolePermission.bulkCreate(staffPerms.map(p => ({ role_id: staffRole.id, permission_id: p.id })));
 
         // Accountant: finance + reports
-        const accountantPerms = createdPerms.filter(p => ['journal.read', 'report.view', 'purchase.read', 'sales.read', 'purchase-payment.read', 'purchase-payment.create'].includes(p.name));
+        const accountantPerms = createdPerms.filter(p => [
+            'journal.read', 'journal.create', 'purchase.read', 'sales.read',
+            'purchase-payment.read', 'purchase-payment.create',
+            'raw-material.read', 'product.read', 'supplier.read', 'customer.read',
+            'salesman.read', 'unit.read', 'coa.read',
+        ].includes(p.name) || p.name.startsWith('report.'));
         await RolePermission.bulkCreate(accountantPerms.map(p => ({ role_id: accountantRole.id, permission_id: p.id })));
 
         // Admin user

@@ -8,6 +8,7 @@ const Sale = sequelize.define('sales', {
     total_amount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
     status: { type: DataTypes.STRING, defaultValue: 'UNPAID' }, // UNPAID, PARTIAL, PAID
     description: { type: DataTypes.STRING },
+    salesman_id: { type: DataTypes.INTEGER, allowNull: true },
     created_by: { type: DataTypes.INTEGER },
 }, { timestamps: false });
 

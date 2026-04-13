@@ -53,6 +53,27 @@ exports.createCustomer = handler(req => masterService.createCustomer(req.body));
 exports.updateCustomer = handler(req => masterService.updateCustomer(req.params.id, req.body));
 exports.deleteCustomer = handler(req => masterService.deleteCustomer(req.params.id));
 
+// SALESMEN
+exports.getSalesmen = handler(req => masterService.getSalesmen(req.query));
+exports.createSalesman = handler(req => masterService.createSalesman(req.body));
+exports.updateSalesman = handler(req => masterService.updateSalesman(req.params.id, req.body));
+exports.deleteSalesman = handler(req => masterService.deleteSalesman(req.params.id));
+
+// POSITIONS
+exports.getPositionOptions = handler(req => masterService.getPositionOptions(req.query));
+exports.getPositions = handler(req => masterService.getPositions(req.query));
+exports.getPositionById = handler(req => masterService.getPositionById(req.params.id));
+exports.createPosition = handler(req => masterService.createPosition(req.body));
+exports.updatePosition = handler(req => masterService.updatePosition(req.params.id, req.body));
+exports.deletePosition = handler(req => masterService.deletePosition(req.params.id));
+
+// EMPLOYEES
+exports.getEmployees = handler(req => masterService.getEmployees(req.query));
+exports.getEmployeeById = handler(req => masterService.getEmployeeById(req.params.id));
+exports.createEmployee = handler(req => masterService.createEmployee(req.body));
+exports.updateEmployee = handler(req => masterService.updateEmployee(req.params.id, req.body));
+exports.deleteEmployee = handler(req => masterService.deleteEmployee(req.params.id));
+
 // COA
 exports.getCOA = handler(req => masterService.getCOA(req.query));
 exports.createCOA = handler(req => masterService.createCOA(req.body));

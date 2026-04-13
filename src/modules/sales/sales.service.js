@@ -2,7 +2,7 @@ const { Op } = require('sequelize');
 const sequelize = require('../../config/database');
 const {
     Sale, SaleDetail, SalePayment,
-    Product, Customer, User, ChartOfAccount,
+    Product, Customer, User, ChartOfAccount, Salesman,
     Journal, JournalDetail,
 } = require('../../models');
 
@@ -12,17 +12,34 @@ const paginate = (page, limit) => {
     return { offset: (p - 1) * l, limit: l };
 };
 
+const normalizeOptionalId = (value) => {
+    if (value === undefined || value === null) return null;
+    if (value === '' || value === 'null' || value === 'undefined') return null;
+    const n = Number(value);
+    if (!Number.isInteger(n) || n <= 0) return null;
+    return n;
+};
+
 const getSales = async ({ page, limit, search, status, date_from, date_to }) => {
     const { offset, limit: l } = paginate(page, limit);
     const where = {};
     if (status) where.status = status;
     if (date_from && date_to) where.date = { [Op.between]: [date_from, date_to] };
+    if (search) {
+        where[Op.or] = [
+            { description: { [Op.like]: `%${search}%` } },
+            { '$customer.name$': { [Op.like]: `%${search}%` } },
+            { '$salesman.name$': { [Op.like]: `%${search}%` } },
+        ];
+    }
     const { count, rows } = await Sale.findAndCountAll({
         where, offset, limit: l,
         include: [
             { model: Customer, as: 'customer' },
+            { model: Salesman, as: 'salesman' },
             { model: User, as: 'creator', attributes: ['id', 'name'] },
         ],
+        subQuery: false,
         order: [['id', 'DESC']],
     });
     return { total: count, page: parseInt(page) || 1, data: rows };
@@ -32,6 +49,7 @@ const getSaleById = async (id) => {
     const sale = await Sale.findByPk(id, {
         include: [
             { model: Customer, as: 'customer' },
+            { model: Salesman, as: 'salesman' },
             { model: User, as: 'creator', attributes: ['id', 'name'] },
             { model: SaleDetail, as: 'details', include: [{ model: Product, as: 'product' }] },
             { model: SalePayment, as: 'payments', include: [{ model: ChartOfAccount, as: 'account' }] },
@@ -41,9 +59,25 @@ const getSaleById = async (id) => {
     return sale;
 };
 
-const createSale = async ({ customer_id, date, description, details }, createdBy) => {
+const getSalePrintData = async (id) => {
+    const sale = await Sale.findByPk(id, {
+        include: [
+            { model: Customer, as: 'customer' },
+            { model: Salesman, as: 'salesman' },
+            { model: User, as: 'creator', attributes: ['id', 'name'] },
+            { model: SaleDetail, as: 'details', include: [{ model: Product, as: 'product' }] },
+        ],
+        order: [[{ model: SaleDetail, as: 'details' }, 'id', 'ASC']],
+    });
+    if (!sale) throw { status: 404, message: 'Sale not found.' };
+    return sale;
+};
+
+const createSale = async ({ customer_id, date, description, salesman_id, details }, createdBy) => {
     if (!customer_id) throw { status: 400, message: 'Customer is required.' };
     if (!details || !details.length) throw { status: 400, message: 'At least one item is required.' };
+
+    const normalizedSalesmanId = normalizeOptionalId(salesman_id);
 
     const t = await sequelize.transaction();
     try {
@@ -57,10 +91,24 @@ const createSale = async ({ customer_id, date, description, details }, createdBy
             if (Number(product.stock) < Number(d.qty)) throw { status: 400, message: `Insufficient stock for ${product.name}. Available: ${product.stock}` };
         }
 
-        // Create sale
-        const sale = await Sale.create({
-            customer_id, date, description, total_amount, status: 'UNPAID', created_by: createdBy,
-        }, { transaction: t });
+        // Resolve optional salesman: keep selected ID if valid, otherwise reject.
+        let resolvedSalesmanId = normalizedSalesmanId;
+        if (resolvedSalesmanId !== null) {
+            const salesman = await Salesman.findByPk(resolvedSalesmanId, { transaction: t });
+            if (!salesman) throw { status: 400, message: 'Invalid salesman_id. Please choose a valid salesman or leave it empty.' };
+        }
+
+        const salePayload = {
+            customer_id,
+            date,
+            description,
+            salesman_id: resolvedSalesmanId,
+            total_amount,
+            status: 'UNPAID',
+            created_by: createdBy,
+        };
+
+        const sale = await Sale.create(salePayload, { transaction: t });
         await SaleDetail.bulkCreate(detailsWithSubtotal.map(d => ({ ...d, sale_id: sale.id })), { transaction: t });
 
         // Reduce stock
@@ -137,7 +185,7 @@ const getSalePayments = async ({ page, limit, sale_id }) => {
     const { count, rows } = await SalePayment.findAndCountAll({
         where, offset, limit: l,
         include: [
-            { model: Sale, as: 'sale', include: [{ model: Customer, as: 'customer' }] },
+            { model: Sale, as: 'sale', include: [{ model: Customer, as: 'customer' }, { model: Salesman, as: 'salesman' }] },
             { model: ChartOfAccount, as: 'account' },
         ],
         order: [['id', 'DESC']],
@@ -145,4 +193,35 @@ const getSalePayments = async ({ page, limit, sale_id }) => {
     return { total: count, page: parseInt(page) || 1, data: rows };
 };
 
-module.exports = { getSales, getSaleById, createSale, createSalePayment, getSalePayments };
+const getSalePaymentsBySaleId = async (saleId) => {
+    const sale = await Sale.findByPk(saleId, {
+        include: [
+            { model: Customer, as: 'customer' },
+            { model: Salesman, as: 'salesman' },
+            { model: SalePayment, as: 'payments', include: [{ model: ChartOfAccount, as: 'account' }] },
+        ],
+        order: [[{ model: SalePayment, as: 'payments' }, 'date', 'ASC'], [{ model: SalePayment, as: 'payments' }, 'id', 'ASC']],
+    });
+    if (!sale) throw { status: 404, message: 'Sale not found.' };
+
+    const total_paid = sale.payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const total_amount = Number(sale.total_amount || 0);
+    const remaining_amount = Math.max(total_amount - total_paid, 0);
+
+    return {
+        sale,
+        sale_payments: sale.payments,
+        total_paid,
+        remaining_amount,
+    };
+};
+
+module.exports = {
+    getSales,
+    getSaleById,
+    getSalePrintData,
+    createSale,
+    createSalePayment,
+    getSalePayments,
+    getSalePaymentsBySaleId,
+};

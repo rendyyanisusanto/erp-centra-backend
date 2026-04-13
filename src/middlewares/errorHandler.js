@@ -7,6 +7,14 @@ const errorHandler = (err, req, res, next) => {
         return res.status(422).json({ success: false, message: messages.join(', ') });
     }
 
+    // Sequelize FK errors
+    if (err.name === 'SequelizeForeignKeyConstraintError') {
+        if (err.index === 'fk_sales_salesman_id' || err.message?.includes('fk_sales_salesman_id')) {
+            return res.status(400).json({ success: false, message: 'Invalid salesman_id. Please choose a valid salesman or leave it empty.' });
+        }
+        return res.status(400).json({ success: false, message: 'Invalid reference data for this transaction.' });
+    }
+
     // JWT errors
     if (err.name === 'JsonWebTokenError') {
         return res.status(401).json({ success: false, message: 'Invalid token.' });

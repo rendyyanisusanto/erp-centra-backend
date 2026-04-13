@@ -1,6 +1,10 @@
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
-const { Role, Permission, RolePermission, User, Unit, Product, RawMaterial, Supplier, Customer, ChartOfAccount, StockMovement } = require('../../models');
+const {
+    Role, Permission, RolePermission, User,
+    Unit, Product, RawMaterial, Supplier, Customer, Salesman, Position, Employee,
+    ChartOfAccount, StockMovement, Sale,
+} = require('../../models');
 
 const paginate = (page, limit) => {
     const p = Math.max(1, parseInt(page) || 1);
@@ -12,6 +16,10 @@ const searchWhere = (search, fields) => {
     if (!search) return {};
     return { [Op.or]: fields.map(f => ({ [f]: { [Op.like]: `%${search}%` } })) };
 };
+
+const parseBoolean = (value) => ['true', '1', 1, true].includes(value);
+const EMPLOYEE_GENDERS = ['MALE', 'FEMALE'];
+const EMPLOYEE_STATUSES = ['ACTIVE', 'INACTIVE'];
 
 // ====== ROLES ======
 const getRoles = async ({ page, limit, search }) => {
@@ -252,6 +260,335 @@ const deleteCustomer = async (id) => {
     await customer.destroy();
 };
 
+// ====== SALESMEN ======
+const getSalesmen = async ({ page, limit, search, is_active }) => {
+    const { offset, limit: l } = paginate(page, limit);
+    const where = searchWhere(search, ['code', 'name', 'phone']);
+    if (is_active !== undefined && is_active !== '') {
+        where.is_active = parseBoolean(is_active);
+    }
+    const { count, rows } = await Salesman.findAndCountAll({
+        where,
+        offset,
+        limit: l,
+        order: [['name', 'ASC']],
+    });
+    return { total: count, page: parseInt(page) || 1, data: rows };
+};
+
+const createSalesman = async ({ code, name, phone, address, is_active }) => {
+    if (!code || !name) throw { status: 400, message: 'Salesman code and name are required.' };
+    const exists = await Salesman.findOne({ where: { code } });
+    if (exists) throw { status: 409, message: 'Salesman code already exists.' };
+    return await Salesman.create({
+        code,
+        name,
+        phone,
+        address,
+        is_active: is_active === undefined ? true : parseBoolean(is_active),
+    });
+};
+
+const updateSalesman = async (id, data) => {
+    const salesman = await Salesman.findByPk(id);
+    if (!salesman) throw { status: 404, message: 'Salesman not found.' };
+
+    if (data.code && data.code !== salesman.code) {
+        const exists = await Salesman.findOne({ where: { code: data.code } });
+        if (exists) throw { status: 409, message: 'Salesman code already exists.' };
+    }
+
+    if (data.is_active !== undefined) {
+        data.is_active = parseBoolean(data.is_active);
+    }
+    Object.assign(salesman, data);
+    await salesman.save();
+    return salesman;
+};
+
+const deleteSalesman = async (id) => {
+    const salesman = await Salesman.findByPk(id);
+    if (!salesman) throw { status: 404, message: 'Salesman not found.' };
+
+    const usedInSales = await Sale.findOne({ where: { salesman_id: id }, attributes: ['id'] });
+    if (usedInSales) {
+        throw { status: 400, message: 'Salesman cannot be deleted because it is already used in sales transactions.' };
+    }
+
+    await salesman.destroy();
+};
+
+// ====== POSITIONS ======
+const getPositionOptions = async ({ search, limit }) => {
+    const l = Math.min(500, parseInt(limit) || 200);
+    const where = searchWhere(search, ['code', 'name']);
+    return await Position.findAll({
+        where,
+        attributes: ['id', 'code', 'name'],
+        order: [['name', 'ASC']],
+        limit: l,
+    });
+};
+
+const getPositions = async ({ page, limit, search }) => {
+    const { offset, limit: l } = paginate(page, limit);
+    const where = searchWhere(search, ['code', 'name']);
+    const { count, rows } = await Position.findAndCountAll({
+        where,
+        offset,
+        limit: l,
+        order: [['id', 'DESC']],
+    });
+    return { total: count, page: parseInt(page) || 1, data: rows };
+};
+
+const getPositionById = async (id) => {
+    const position = await Position.findByPk(id);
+    if (!position) throw { status: 404, message: 'Position not found.' };
+    return position;
+};
+
+const createPosition = async ({ code, name, description }) => {
+    const normalizedCode = String(code || '').trim();
+    const normalizedName = String(name || '').trim();
+
+    if (!normalizedCode) throw { status: 400, message: 'Position code is required.' };
+    if (!normalizedName) throw { status: 400, message: 'Position name is required.' };
+
+    const exists = await Position.findOne({ where: { code: normalizedCode } });
+    if (exists) throw { status: 409, message: 'Position code already exists.' };
+
+    return await Position.create({
+        code: normalizedCode,
+        name: normalizedName,
+        description: description ? String(description).trim() : null,
+    });
+};
+
+const updatePosition = async (id, data) => {
+    const position = await Position.findByPk(id);
+    if (!position) throw { status: 404, message: 'Position not found.' };
+
+    if (data.code !== undefined) {
+        const normalizedCode = String(data.code || '').trim();
+        if (!normalizedCode) throw { status: 400, message: 'Position code is required.' };
+        if (normalizedCode !== position.code) {
+            const exists = await Position.findOne({ where: { code: normalizedCode } });
+            if (exists) throw { status: 409, message: 'Position code already exists.' };
+        }
+        position.code = normalizedCode;
+    }
+
+    if (data.name !== undefined) {
+        const normalizedName = String(data.name || '').trim();
+        if (!normalizedName) throw { status: 400, message: 'Position name is required.' };
+        position.name = normalizedName;
+    }
+
+    if (data.description !== undefined) {
+        position.description = data.description ? String(data.description).trim() : null;
+    }
+
+    await position.save();
+    return position;
+};
+
+const deletePosition = async (id) => {
+    const position = await Position.findByPk(id);
+    if (!position) throw { status: 404, message: 'Position not found.' };
+
+    const usedByEmployee = await Employee.findOne({ where: { position_id: id }, attributes: ['id'] });
+    if (usedByEmployee) {
+        throw { status: 400, message: 'Position cannot be deleted because it is already used by employees.' };
+    }
+
+    await position.destroy();
+};
+
+// ====== EMPLOYEES ======
+const normalizeEmployeeStatus = (value) => String(value || '').trim().toUpperCase();
+const normalizeEmployeeGender = (value) => String(value || '').trim().toUpperCase();
+
+const sanitizeOptionalText = (value) => {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    const normalized = String(value).trim();
+    return normalized || null;
+};
+
+const sanitizeBasicSalary = (value, { required = false } = {}) => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') {
+        if (required) throw { status: 400, message: 'Basic salary is invalid.' };
+        return null;
+    }
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        throw { status: 400, message: 'Basic salary must be a number greater than or equal to 0.' };
+    }
+    return parsed;
+};
+
+const sanitizePositionId = (value, { required = false } = {}) => {
+    if (value === undefined) {
+        if (required) throw { status: 400, message: 'Position is required.' };
+        return undefined;
+    }
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) throw { status: 400, message: 'Position is required.' };
+    return parsed;
+};
+
+const sanitizeStatus = (value, { required = false } = {}) => {
+    if (value === undefined) {
+        if (required) throw { status: 400, message: 'Employee status is required.' };
+        return undefined;
+    }
+    const normalized = normalizeEmployeeStatus(value);
+    if (!EMPLOYEE_STATUSES.includes(normalized)) {
+        throw { status: 400, message: 'Employee status must be ACTIVE or INACTIVE.' };
+    }
+    return normalized;
+};
+
+const sanitizeGender = (value) => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    const normalized = normalizeEmployeeGender(value);
+    if (!EMPLOYEE_GENDERS.includes(normalized)) {
+        throw { status: 400, message: 'Gender must be MALE or FEMALE.' };
+    }
+    return normalized;
+};
+
+const sanitizeEmployeePayload = (data, { isUpdate = false } = {}) => {
+    const payload = {};
+
+    if (!isUpdate || data.employee_code !== undefined) {
+        const employeeCode = String(data.employee_code || '').trim();
+        if (!employeeCode) throw { status: 400, message: 'Employee code is required.' };
+        payload.employee_code = employeeCode;
+    }
+
+    if (!isUpdate || data.name !== undefined) {
+        const name = String(data.name || '').trim();
+        if (!name) throw { status: 400, message: 'Employee name is required.' };
+        payload.name = name;
+    }
+
+    const positionId = sanitizePositionId(data.position_id, { required: !isUpdate });
+    if (positionId !== undefined) payload.position_id = positionId;
+
+    const status = sanitizeStatus(data.status, { required: !isUpdate });
+    if (status !== undefined) payload.status = status;
+
+    const gender = sanitizeGender(data.gender);
+    if (gender !== undefined) payload.gender = gender;
+
+    const phone = sanitizeOptionalText(data.phone);
+    if (phone !== undefined) payload.phone = phone;
+
+    const address = sanitizeOptionalText(data.address);
+    if (address !== undefined) payload.address = address;
+
+    const basicSalary = sanitizeBasicSalary(data.basic_salary);
+    if (basicSalary !== undefined) payload.basic_salary = basicSalary;
+
+    return payload;
+};
+
+const ensurePositionExists = async (positionId) => {
+    const position = await Position.findByPk(positionId, { attributes: ['id'] });
+    if (!position) throw { status: 400, message: 'Position not found. Please choose a valid position.' };
+};
+
+const mapEmployeeRow = (row) => {
+    const employee = row.toJSON();
+    return {
+        ...employee,
+        position_name: employee.position?.name || null,
+    };
+};
+
+const getEmployees = async ({ page, limit, search, position_id, status }) => {
+    const { offset, limit: l } = paginate(page, limit);
+    const where = {};
+
+    if (search) {
+        where[Op.or] = [
+            { employee_code: { [Op.like]: `%${search}%` } },
+            { name: { [Op.like]: `%${search}%` } },
+            { phone: { [Op.like]: `%${search}%` } },
+        ];
+    }
+
+    if (position_id !== undefined && position_id !== '') {
+        const parsedPositionId = Number(position_id);
+        if (!Number.isInteger(parsedPositionId) || parsedPositionId <= 0) throw { status: 400, message: 'Invalid position filter.' };
+        where.position_id = parsedPositionId;
+    }
+
+    if (status !== undefined && status !== '') {
+        const normalizedStatus = normalizeEmployeeStatus(status);
+        if (!EMPLOYEE_STATUSES.includes(normalizedStatus)) throw { status: 400, message: 'Invalid status filter.' };
+        where.status = normalizedStatus;
+    }
+
+    const { count, rows } = await Employee.findAndCountAll({
+        where,
+        offset,
+        limit: l,
+        include: [{ model: Position, as: 'position', attributes: ['id', 'name'] }],
+        order: [['id', 'DESC']],
+    });
+
+    return { total: count, page: parseInt(page) || 1, data: rows.map(mapEmployeeRow) };
+};
+
+const getEmployeeById = async (id) => {
+    const employee = await Employee.findByPk(id, {
+        include: [{ model: Position, as: 'position', attributes: ['id', 'name'] }],
+    });
+    if (!employee) throw { status: 404, message: 'Employee not found.' };
+    return mapEmployeeRow(employee);
+};
+
+const createEmployee = async (data) => {
+    const payload = sanitizeEmployeePayload(data, { isUpdate: false });
+
+    const exists = await Employee.findOne({ where: { employee_code: payload.employee_code }, attributes: ['id'] });
+    if (exists) throw { status: 409, message: 'Employee code already exists.' };
+
+    await ensurePositionExists(payload.position_id);
+    return await Employee.create(payload);
+};
+
+const updateEmployee = async (id, data) => {
+    const employee = await Employee.findByPk(id);
+    if (!employee) throw { status: 404, message: 'Employee not found.' };
+
+    const payload = sanitizeEmployeePayload(data, { isUpdate: true });
+
+    if (payload.employee_code && payload.employee_code !== employee.employee_code) {
+        const exists = await Employee.findOne({ where: { employee_code: payload.employee_code }, attributes: ['id'] });
+        if (exists) throw { status: 409, message: 'Employee code already exists.' };
+    }
+
+    if (payload.position_id !== undefined) {
+        await ensurePositionExists(payload.position_id);
+    }
+
+    Object.assign(employee, payload);
+    await employee.save();
+    return employee;
+};
+
+const deleteEmployee = async (id) => {
+    const employee = await Employee.findByPk(id);
+    if (!employee) throw { status: 404, message: 'Employee not found.' };
+    await employee.destroy();
+};
+
 // ====== CHART OF ACCOUNTS ======
 const getCOA = async ({ page, limit, search, type }) => {
     const { offset, limit: l } = paginate(page, limit);
@@ -292,5 +629,8 @@ module.exports = {
     getRawMaterials, createRawMaterial, updateRawMaterial, deleteRawMaterial,
     getSuppliers, createSupplier, updateSupplier, deleteSupplier,
     getCustomers, createCustomer, updateCustomer, deleteCustomer,
+    getSalesmen, createSalesman, updateSalesman, deleteSalesman,
+    getPositionOptions, getPositions, getPositionById, createPosition, updatePosition, deletePosition,
+    getEmployees, getEmployeeById, createEmployee, updateEmployee, deleteEmployee,
     getCOA, createCOA, updateCOA, deleteCOA,
 };
