@@ -1,0 +1,31 @@
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+
+const Sale = sequelize.define('sales', {
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    customer_id: { type: DataTypes.INTEGER, allowNull: false },
+    date: { type: DataTypes.DATEONLY, allowNull: false },
+    total_amount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    status: { type: DataTypes.STRING, defaultValue: 'UNPAID' }, // UNPAID, PARTIAL, PAID
+    description: { type: DataTypes.STRING },
+    created_by: { type: DataTypes.INTEGER },
+}, { timestamps: false });
+
+const SaleDetail = sequelize.define('sale_details', {
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    sale_id: { type: DataTypes.INTEGER, allowNull: false },
+    product_id: { type: DataTypes.INTEGER, allowNull: false },
+    qty: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+    price: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+    subtotal: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+}, { timestamps: false });
+
+const SalePayment = sequelize.define('sale_payments', {
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    sale_id: { type: DataTypes.INTEGER, allowNull: false },
+    date: { type: DataTypes.DATEONLY, allowNull: false },
+    amount: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+    account_id: { type: DataTypes.INTEGER, allowNull: false },
+}, { timestamps: false });
+
+module.exports = { Sale, SaleDetail, SalePayment };
