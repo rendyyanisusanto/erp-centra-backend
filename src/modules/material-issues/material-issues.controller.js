@@ -15,4 +15,4 @@ exports.createMaterialIssue = handler(req => materialIssueService.createMaterial
 exports.updateMaterialIssue = handler(req => materialIssueService.updateMaterialIssue(req.params.id, req.body));
 exports.deleteMaterialIssue = handler(req => materialIssueService.deleteMaterialIssue(req.params.id));
 exports.approveMaterialIssue = handler(req => materialIssueService.approveMaterialIssue(req.params.id, req.user.id));
-exports.cancelMaterialIssue = handler(req => materialIssueService.cancelMaterialIssue(req.params.id));
+exports.cancelMaterialIssue = handler(req => materialIssueService.cancelMaterialIssue(req.params.id, req.user.id, req.body?.cancel_reason));

@@ -13,6 +13,7 @@ const materialIssueRoutes = require('./modules/material-issues/material-issues.r
 const productionPlanRoutes = require('./modules/production-plans/production-plans.routes');
 const productionRealizationRoutes = require('./modules/production-realizations/production-realizations.routes');
 const finishedGoodsReceiptRoutes = require('./modules/finished-goods-receipts/finished-goods-receipts.routes');
+const paymentAliasesRoutes = require('./modules/payment-aliases/payment-aliases.routes');
 const errorHandler = require('./middlewares/errorHandler');
 
 const app = express();
@@ -36,6 +37,7 @@ app.use('/api/material-issues', materialIssueRoutes);
 app.use('/api/production-plans', productionPlanRoutes);
 app.use('/api/production-realizations', productionRealizationRoutes);
 app.use('/api/finished-goods-receipts', finishedGoodsReceiptRoutes);
+app.use('/api', paymentAliasesRoutes);
 
 // 404 handler
 app.use((req, res) => {

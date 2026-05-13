@@ -16,4 +16,4 @@ exports.createFinishedGoodsReceipt = handler(req => service.createFinishedGoodsR
 exports.updateFinishedGoodsReceipt = handler(req => service.updateFinishedGoodsReceipt(req.params.id, req.body));
 exports.deleteFinishedGoodsReceipt = handler(req => service.deleteFinishedGoodsReceipt(req.params.id));
 exports.approveFinishedGoodsReceipt = handler(req => service.approveFinishedGoodsReceipt(req.params.id, req.user.id));
-exports.cancelFinishedGoodsReceipt = handler(req => service.cancelFinishedGoodsReceipt(req.params.id));
+exports.cancelFinishedGoodsReceipt = handler(req => service.cancelFinishedGoodsReceipt(req.params.id, req.user.id, req.body?.cancel_reason));

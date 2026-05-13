@@ -9,7 +9,13 @@ const StockAdjustment = sequelize.define('stock_adjustments', {
     qty_real: { type: DataTypes.DECIMAL(15, 2) },
     difference: { type: DataTypes.DECIMAL(15, 2) },
     date: { type: DataTypes.DATEONLY, allowNull: false },
+    status: { type: DataTypes.STRING, defaultValue: 'DRAFT' },
     created_by: { type: DataTypes.INTEGER },
+    approved_by: { type: DataTypes.INTEGER, allowNull: true },
+    approved_at: { type: DataTypes.DATE, allowNull: true },
+    cancelled_by: { type: DataTypes.INTEGER, allowNull: true },
+    cancelled_at: { type: DataTypes.DATE, allowNull: true },
+    cancel_reason: { type: DataTypes.TEXT, allowNull: true },
 }, { timestamps: false });
 
 module.exports = StockAdjustment;

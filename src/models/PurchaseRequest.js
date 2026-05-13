@@ -6,8 +6,13 @@ const PurchaseRequest = sequelize.define('purchase_requests', {
     request_number: { type: DataTypes.STRING, allowNull: false },
     date: { type: DataTypes.DATEONLY, allowNull: false },
     description: { type: DataTypes.TEXT },
-    status: { type: DataTypes.STRING, defaultValue: 'DRAFT' }, // DRAFT, APPROVED, REJECTED
+    status: { type: DataTypes.STRING, defaultValue: 'DRAFT' }, // DRAFT, APPROVED, CANCELLED
     created_by: { type: DataTypes.INTEGER },
+    approved_by: { type: DataTypes.INTEGER, allowNull: true },
+    approved_at: { type: DataTypes.DATE, allowNull: true },
+    cancelled_by: { type: DataTypes.INTEGER, allowNull: true },
+    cancelled_at: { type: DataTypes.DATE, allowNull: true },
+    cancel_reason: { type: DataTypes.TEXT, allowNull: true },
     created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { timestamps: false });
 

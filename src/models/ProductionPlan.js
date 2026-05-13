@@ -11,6 +11,9 @@ const ProductionPlan = sequelize.define('production_plans', {
     created_by: { type: DataTypes.INTEGER, allowNull: false },
     approved_by: { type: DataTypes.INTEGER },
     approved_at: { type: DataTypes.DATE },
+    cancelled_by: { type: DataTypes.INTEGER },
+    cancelled_at: { type: DataTypes.DATE },
+    cancel_reason: { type: DataTypes.TEXT },
     created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 }, { timestamps: false });
 

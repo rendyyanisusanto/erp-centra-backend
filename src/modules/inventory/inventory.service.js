@@ -67,6 +67,7 @@ const createAdjustment = async ({ date, details }, createdBy) => {
         // Header (item_type/item_id at header level unused — multi-item via details)
         const adj = await StockAdjustment.create({
             date,
+            status: 'DRAFT',
             item_type: null,
             item_id: null,
             qty_system: null,
@@ -86,34 +87,78 @@ const createAdjustment = async ({ date, details }, createdBy) => {
         }));
         await StockAdjustmentDetail.bulkCreate(detailRows, { transaction: t });
 
-        // Update stock for each item
-        for (const d of detailRows) {
-            if (d.item_type === 'RAW') {
-                await RawMaterial.update({ stock: d.qty_real }, { where: { id: d.item_id }, transaction: t });
-            } else if (d.item_type === 'PRODUCT') {
-                await Product.update({ stock: d.qty_real }, { where: { id: d.item_id }, transaction: t });
-            }
-        }
+        await t.commit();
+        return getAdjustmentById(adj.id);
+    } catch (err) {
+        await t.rollback();
+        throw err;
+    }
+};
 
-        // Record stock movements (only for RAW_MATERIAL items)
-        const movementRows = detailRows
-            .filter(d => d.difference !== 0)
+const approveAdjustment = async (id, approvedBy) => {
+    const adj = await StockAdjustment.findByPk(id, { include: [{ model: StockAdjustmentDetail, as: 'details' }] });
+    if (!adj) throw { status: 404, message: 'Stock adjustment not found.' };
+    if (adj.status !== 'DRAFT') throw { status: 400, message: 'Hanya stock adjustment DRAFT yang bisa disetujui.' };
+    const t = await sequelize.transaction();
+    try {
+        for (const d of adj.details) {
+            if (d.item_type === 'RAW') await RawMaterial.update({ stock: d.qty_real }, { where: { id: d.item_id }, transaction: t });
+            else if (d.item_type === 'PRODUCT') await Product.update({ stock: d.qty_real }, { where: { id: d.item_id }, transaction: t });
+        }
+        const movementRows = adj.details
+            .filter(d => Number(d.difference || 0) !== 0)
             .map(d => ({
                 item_type: d.item_type === 'RAW' ? 'RAW_MATERIAL' : 'PRODUCT',
                 item_id: d.item_id,
-                transaction_date: date,
+                transaction_date: adj.date,
                 reference_type: 'ADJUSTMENT',
                 reference_id: adj.id,
-                qty_in: d.difference > 0 ? d.difference : 0,
-                qty_out: d.difference < 0 ? Math.abs(d.difference) : 0,
+                qty_in: Number(d.difference) > 0 ? Number(d.difference) : 0,
+                qty_out: Number(d.difference) < 0 ? Math.abs(Number(d.difference)) : 0,
                 note: `Stock Adjustment #${adj.id}`,
             }));
-        if (movementRows.length) {
-            await StockMovement.bulkCreate(movementRows, { transaction: t });
-        }
-
+        if (movementRows.length) await StockMovement.bulkCreate(movementRows, { transaction: t });
+        adj.status = 'APPROVED';
+        adj.approved_by = approvedBy;
+        adj.approved_at = new Date();
+        await adj.save({ transaction: t });
         await t.commit();
-        return getAdjustmentById(adj.id);
+        return getAdjustmentById(id);
+    } catch (err) {
+        await t.rollback();
+        throw err;
+    }
+};
+
+const cancelAdjustment = async (id, cancelledBy, cancelReason) => {
+    const adj = await StockAdjustment.findByPk(id, { include: [{ model: StockAdjustmentDetail, as: 'details' }] });
+    if (!adj) throw { status: 404, message: 'Stock adjustment not found.' };
+    if (adj.status !== 'APPROVED') throw { status: 400, message: 'Hanya stock adjustment APPROVED yang bisa dibatalkan.' };
+    const t = await sequelize.transaction();
+    try {
+        for (const d of adj.details) {
+            if (d.item_type === 'RAW') await RawMaterial.update({ stock: d.qty_system }, { where: { id: d.item_id }, transaction: t });
+            else if (d.item_type === 'PRODUCT') await Product.update({ stock: d.qty_system }, { where: { id: d.item_id }, transaction: t });
+        }
+        await StockMovement.bulkCreate(adj.details
+            .filter(d => Number(d.difference || 0) !== 0)
+            .map(d => ({
+                item_type: d.item_type === 'RAW' ? 'RAW_MATERIAL' : 'PRODUCT',
+                item_id: d.item_id,
+                transaction_date: new Date(),
+                reference_type: 'ADJUSTMENT_CANCEL',
+                reference_id: adj.id,
+                qty_in: Number(d.difference) < 0 ? Math.abs(Number(d.difference)) : 0,
+                qty_out: Number(d.difference) > 0 ? Number(d.difference) : 0,
+                note: `Reversal Stock Adjustment #${adj.id}`,
+            })), { transaction: t });
+        adj.status = 'CANCELLED';
+        adj.cancelled_by = cancelledBy;
+        adj.cancelled_at = new Date();
+        adj.cancel_reason = cancelReason || null;
+        await adj.save({ transaction: t });
+        await t.commit();
+        return getAdjustmentById(id);
     } catch (err) {
         await t.rollback();
         throw err;
@@ -124,6 +169,7 @@ const createAdjustment = async ({ date, details }, createdBy) => {
 const deleteAdjustment = async (id) => {
     const adj = await StockAdjustment.findByPk(id);
     if (!adj) throw { status: 404, message: 'Stock adjustment not found.' };
+    if (adj.status !== 'DRAFT') throw { status: 400, message: 'Hanya stock adjustment DRAFT yang bisa dihapus.' };
     await StockAdjustmentDetail.destroy({ where: { stock_adjustment_id: id } });
     await adj.destroy();
     return { message: 'Deleted successfully.' };
@@ -170,4 +216,4 @@ const getStockMovements = async ({ page, limit, search, item_type, reference_typ
     return { total: search ? filtered.length : count, page: parseInt(page) || 1, data: search ? filtered : data };
 };
 
-module.exports = { getAdjustments, getAdjustmentById, createAdjustment, deleteAdjustment, getStockMovements };
+module.exports = { getAdjustments, getAdjustmentById, createAdjustment, approveAdjustment, cancelAdjustment, deleteAdjustment, getStockMovements };

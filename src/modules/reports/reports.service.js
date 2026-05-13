@@ -2,7 +2,7 @@ const { Op, literal } = require('sequelize');
 const sequelize = require('../../config/database');
 const {
     Journal, JournalDetail, ChartOfAccount, RawMaterial,
-    Sale, SalePayment, Purchase, PurchasePayment, Customer, Supplier,
+    Sale, SalePayment, SalePaymentDetail, Purchase, PurchasePayment, PurchasePaymentDetail, Customer, Supplier,
     MaterialIssue, MaterialIssueDetail, Employee, Position, Unit, User,
     ProductionPlanDetail, Product,
 } = require('../../models');
@@ -43,16 +43,16 @@ const getPayableReport = async ({ date_from, date_to }) => {
     if (date_from && date_to) where.date = { [Op.between]: [date_from, date_to] };
 
     const purchases = await Purchase.findAll({
-        where: { ...where, status: { [Op.in]: ['OPEN', 'PARTIAL'] } },
+        where: { ...where, status: 'APPROVED', payment_status: { [Op.in]: ['UNPAID', 'PARTIAL'] } },
         include: [
             { model: Supplier, as: 'supplier' },
-            { model: PurchasePayment, as: 'payments' },
+            { model: PurchasePaymentDetail, as: 'paymentDetails' },
         ],
         order: [['date', 'ASC']],
     });
 
     return purchases.map(p => {
-        const totalPaid = p.payments.reduce((sum, pay) => sum + Number(pay.amount), 0);
+        const totalPaid = (p.paymentDetails || []).reduce((sum, pay) => sum + Number(pay.amount_paid), 0);
         return {
             id: p.id,
             date: p.date,
@@ -60,7 +60,7 @@ const getPayableReport = async ({ date_from, date_to }) => {
             total_amount: p.total_amount,
             total_paid: totalPaid,
             remaining: Number(p.total_amount) - totalPaid,
-            status: p.status,
+            status: p.payment_status,
         };
     });
 };
@@ -71,16 +71,16 @@ const getReceivableReport = async ({ date_from, date_to }) => {
     if (date_from && date_to) where.date = { [Op.between]: [date_from, date_to] };
 
     const sales = await Sale.findAll({
-        where: { ...where, status: { [Op.in]: ['UNPAID', 'PARTIAL'] } },
+        where: { ...where, status: 'APPROVED', payment_status: { [Op.in]: ['UNPAID', 'PARTIAL'] } },
         include: [
             { model: Customer, as: 'customer' },
-            { model: SalePayment, as: 'payments' },
+            { model: SalePaymentDetail, as: 'paymentDetails' },
         ],
         order: [['date', 'ASC']],
     });
 
     return sales.map(s => {
-        const totalPaid = s.payments.reduce((sum, pay) => sum + Number(pay.amount), 0);
+        const totalPaid = (s.paymentDetails || []).reduce((sum, pay) => sum + Number(pay.amount_paid), 0);
         return {
             id: s.id,
             date: s.date,
@@ -88,7 +88,7 @@ const getReceivableReport = async ({ date_from, date_to }) => {
             total_amount: s.total_amount,
             total_paid: totalPaid,
             remaining: Number(s.total_amount) - totalPaid,
-            status: s.status,
+            status: s.payment_status,
         };
     });
 };
@@ -356,7 +356,7 @@ const getPurchaseOrderRecap = async ({ date_from, date_to, supplier_id }) => {
 // ====== SUPPLIER PAYABLE STATEMENT ======
 const getSupplierPayableStatement = async ({ date_from, date_to, supplier_id }) => {
     if (!supplier_id) throw { status: 400, message: 'supplier_id is required.' };
-    const { Purchase, PurchaseDetail, PurchasePayment, RawMaterial, Product, Supplier } = require('../../models');
+    const { Purchase, PurchaseDetail, PurchasePayment, PurchasePaymentDetail, RawMaterial, Product, Supplier } = require('../../models');
 
     const supplier = await Supplier.findByPk(supplier_id);
     if (!supplier) throw { status: 404, message: 'Supplier not found.' };
@@ -369,12 +369,13 @@ const getSupplierPayableStatement = async ({ date_from, date_to, supplier_id }) 
             where: {
                 supplier_id,
                 date: { [Op.lt]: date_from },
-                status: { [Op.in]: ['OPEN', 'PARTIAL'] }
+                status: 'APPROVED',
+                payment_status: { [Op.in]: ['UNPAID', 'PARTIAL'] }
             },
-            include: [{ model: PurchasePayment, as: 'payments' }]
+            include: [{ model: PurchasePaymentDetail, as: 'paymentDetails' }]
         });
         pastPurchases.forEach(p => {
-            const paid = p.payments.reduce((sum, pay) => sum + Number(pay.amount), 0);
+            const paid = (p.paymentDetails || []).reduce((sum, pay) => sum + Number(pay.amount_paid), 0);
             previous_balance += (Number(p.total_amount) - paid);
         });
     } else {
@@ -384,8 +385,6 @@ const getSupplierPayableStatement = async ({ date_from, date_to, supplier_id }) 
 
     // 2. Fetch purchases and their details within the date range
     const purchaseWhere = { supplier_id };
-    const paymentWhere = { purchase_id: [] }; // will extract purchase IDs
-
     if (date_from && date_to) {
         purchaseWhere.date = { [Op.between]: [date_from, date_to] };
     } else if (date_from) {
@@ -429,7 +428,7 @@ const getSupplierPayableStatement = async ({ date_from, date_to, supplier_id }) 
 
     const payments = await PurchasePayment.findAll({
         where: {
-            purchase_id: { [Op.in]: supplierPurchaseIds },
+            supplier_id,
             ...paymentDateWhere
         },
         order: [['date', 'ASC'], ['id', 'ASC']]
@@ -462,7 +461,7 @@ const getSupplierPayableStatement = async ({ date_from, date_to, supplier_id }) 
     });
 
     const payment_transactions = payments.map(pay => {
-        const amt = Number(pay.amount);
+        const amt = Number(pay.total_amount);
         total_payments += amt;
         return {
             type: 'PAYMENT',

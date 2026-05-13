@@ -16,4 +16,4 @@ exports.createProductionPlan = handler(req => service.createProductionPlan(req.b
 exports.updateProductionPlan = handler(req => service.updateProductionPlan(req.params.id, req.body));
 exports.deleteProductionPlan = handler(req => service.deleteProductionPlan(req.params.id));
 exports.approveProductionPlan = handler(req => service.approveProductionPlan(req.params.id, req.user.id));
-exports.cancelProductionPlan = handler(req => service.cancelProductionPlan(req.params.id));
+exports.cancelProductionPlan = handler(req => service.cancelProductionPlan(req.params.id, req.user.id, req.body?.cancel_reason));

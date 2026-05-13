@@ -343,19 +343,47 @@ const approveMaterialIssue = async (id, approvedBy) => {
     }
 };
 
-const cancelMaterialIssue = async (id) => {
-    const issue = await MaterialIssue.findByPk(id);
+const cancelMaterialIssue = async (id, cancelledBy, cancelReason) => {
+    const issue = await MaterialIssue.findByPk(id, { include: [{ model: MaterialIssueDetail, as: 'details' }] });
     if (!issue) throw { status: 404, message: 'Material issue not found.' };
-    if (issue.status === STATUS.APPROVED) {
-        throw { status: 400, message: 'Approved material issue cannot be cancelled.' };
-    }
-    if (issue.status === STATUS.CANCELLED) {
-        throw { status: 400, message: 'Material issue is already cancelled.' };
-    }
+    if (issue.status !== STATUS.APPROVED) throw { status: 400, message: 'Hanya material issue APPROVED yang bisa dibatalkan.' };
 
-    issue.status = STATUS.CANCELLED;
-    await issue.save();
-    return issue;
+    const t = await sequelize.transaction();
+    try {
+        for (const detail of issue.details || []) {
+            const rawMaterial = await RawMaterial.findByPk(detail.raw_material_id, {
+                attributes: ['id', 'stock'],
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            });
+            if (!rawMaterial) throw { status: 400, message: `Raw material with id ${detail.raw_material_id} not found.` };
+
+            rawMaterial.stock = Number(rawMaterial.stock || 0) + Number(detail.qty || 0);
+            await rawMaterial.save({ transaction: t });
+
+            await StockMovement.create({
+                item_type: 'RAW_MATERIAL',
+                item_id: detail.raw_material_id,
+                transaction_date: new Date(),
+                reference_type: 'MATERIAL_ISSUE_CANCEL',
+                reference_id: issue.id,
+                qty_in: Number(detail.qty || 0),
+                qty_out: 0,
+                note: `Reversal material issue ${issue.issue_number}`,
+            }, { transaction: t });
+        }
+
+        issue.status = STATUS.CANCELLED;
+        issue.cancelled_by = cancelledBy;
+        issue.cancelled_at = new Date();
+        issue.cancel_reason = cancelReason || null;
+        await issue.save({ transaction: t });
+        await t.commit();
+        return getMaterialIssueById(issue.id);
+    } catch (err) {
+        await t.rollback();
+        throw err;
+    }
 };
 
 module.exports = {

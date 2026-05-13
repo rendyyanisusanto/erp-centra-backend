@@ -342,15 +342,48 @@ const approveFinishedGoodsReceipt = async (id, approvedBy) => {
     }
 };
 
-const cancelFinishedGoodsReceipt = async (id) => {
-    const receipt = await FinishedGoodsReceipt.findByPk(id);
+const cancelFinishedGoodsReceipt = async (id, cancelledBy, cancelReason) => {
+    const receipt = await FinishedGoodsReceipt.findByPk(id, { include: [{ model: FinishedGoodsReceiptDetail, as: 'details' }] });
     if (!receipt) throw { status: 404, message: 'Finished goods receipt not found.' };
-    if (receipt.status === STATUS.APPROVED) throw { status: 400, message: 'Approved receipt cannot be cancelled.' };
-    if (receipt.status === STATUS.CANCELLED) throw { status: 400, message: 'Receipt is already cancelled.' };
+    if (receipt.status !== STATUS.APPROVED) throw { status: 400, message: 'Hanya receipt APPROVED yang bisa dibatalkan.' };
 
-    receipt.status = STATUS.CANCELLED;
-    await receipt.save();
-    return receipt;
+    const t = await sequelize.transaction();
+    try {
+        for (const detail of receipt.details || []) {
+            const product = await Product.findByPk(detail.product_id, {
+                attributes: ['id', 'name', 'stock'],
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+            });
+            if (!product) throw { status: 400, message: `Product with id ${detail.product_id} not found.` };
+            if (Number(product.stock || 0) < Number(detail.qty_received || 0)) {
+                throw { status: 400, message: `Stok ${product.name} tidak cukup untuk reversal cancel.` };
+            }
+            product.stock = Number(product.stock || 0) - Number(detail.qty_received || 0);
+            await product.save({ transaction: t });
+
+            await StockMovement.create({
+                item_type: 'PRODUCT',
+                item_id: detail.product_id,
+                transaction_date: new Date(),
+                reference_type: 'FINISHED_GOODS_RECEIPT_CANCEL',
+                reference_id: receipt.id,
+                qty_in: 0,
+                qty_out: Number(detail.qty_received || 0),
+                note: `Reversal finished goods receipt ${receipt.receipt_number}`,
+            }, { transaction: t });
+        }
+        receipt.status = STATUS.CANCELLED;
+        receipt.cancelled_by = cancelledBy;
+        receipt.cancelled_at = new Date();
+        receipt.cancel_reason = cancelReason || null;
+        await receipt.save({ transaction: t });
+        await t.commit();
+        return getFinishedGoodsReceiptById(receipt.id);
+    } catch (err) {
+        await t.rollback();
+        throw err;
+    }
 };
 
 const getSourceOptions = async ({ search, month, year, product_id }) => {

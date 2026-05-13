@@ -36,19 +36,69 @@ const createCashTransaction = async ({ date, type, description, amount, account_
     const t = await sequelize.transaction();
     try {
         const cash = await CashTransaction.create({
-            date, type, description, amount, account_debit_id, account_credit_id, created_by: createdBy,
+            date,
+            type,
+            description,
+            amount,
+            account_debit_id,
+            account_credit_id,
+            status: 'DRAFT',
+            created_by: createdBy,
         }, { transaction: t });
 
-        // Post journal
+        await t.commit();
+        return cash;
+    } catch (err) {
+        await t.rollback();
+        throw err;
+    }
+};
+
+const approveCashTransaction = async (id, approvedBy) => {
+    const cash = await CashTransaction.findByPk(id);
+    if (!cash) throw { status: 404, message: 'Cash transaction not found.' };
+    if (cash.status !== 'DRAFT') throw { status: 400, message: 'Hanya transaksi kas DRAFT yang bisa disetujui.' };
+    const t = await sequelize.transaction();
+    try {
         const journal = await Journal.create({
-            date, description: description || `Cash ${type} Transaction`,
-            reference_id: cash.id, reference_type: 'cash_transaction', created_by: createdBy,
+            date: cash.date, description: cash.description || `Cash ${cash.type} Transaction`,
+            reference_id: cash.id, reference_type: 'cash_transaction', created_by: approvedBy,
         }, { transaction: t });
         await JournalDetail.bulkCreate([
-            { journal_id: journal.id, account_id: account_debit_id, debit: amount, credit: 0 },
-            { journal_id: journal.id, account_id: account_credit_id, debit: 0, credit: amount },
+            { journal_id: journal.id, account_id: cash.account_debit_id, debit: cash.amount, credit: 0 },
+            { journal_id: journal.id, account_id: cash.account_credit_id, debit: 0, credit: cash.amount },
         ], { transaction: t });
+        cash.status = 'APPROVED';
+        cash.approved_by = approvedBy;
+        cash.approved_at = new Date();
+        await cash.save({ transaction: t });
+        await t.commit();
+        return cash;
+    } catch (err) {
+        await t.rollback();
+        throw err;
+    }
+};
 
+const cancelCashTransaction = async (id, cancelledBy, cancelReason) => {
+    const cash = await CashTransaction.findByPk(id);
+    if (!cash) throw { status: 404, message: 'Cash transaction not found.' };
+    if (cash.status !== 'APPROVED') throw { status: 400, message: 'Hanya transaksi kas APPROVED yang bisa dibatalkan.' };
+    const t = await sequelize.transaction();
+    try {
+        const journal = await Journal.create({
+            date: new Date(), description: `Reversal Cash ${cash.type} Transaction`,
+            reference_id: cash.id, reference_type: 'cash_transaction_cancel', created_by: cancelledBy,
+        }, { transaction: t });
+        await JournalDetail.bulkCreate([
+            { journal_id: journal.id, account_id: cash.account_debit_id, debit: 0, credit: cash.amount },
+            { journal_id: journal.id, account_id: cash.account_credit_id, debit: cash.amount, credit: 0 },
+        ], { transaction: t });
+        cash.status = 'CANCELLED';
+        cash.cancelled_by = cancelledBy;
+        cash.cancelled_at = new Date();
+        cash.cancel_reason = cancelReason || null;
+        await cash.save({ transaction: t });
         await t.commit();
         return cash;
     } catch (err) {
@@ -107,4 +157,4 @@ const createManualJournal = async ({ date, description, details }, createdBy) =>
     }
 };
 
-module.exports = { getCashTransactions, createCashTransaction, getJournals, getJournalById, createManualJournal };
+module.exports = { getCashTransactions, createCashTransaction, approveCashTransaction, cancelCashTransaction, getJournals, getJournalById, createManualJournal };

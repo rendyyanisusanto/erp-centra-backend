@@ -16,9 +16,9 @@ const ChartOfAccount = require('./ChartOfAccount');
 const { MaterialIssue, MaterialIssueDetail } = require('./MaterialIssue');
 const { Journal, JournalDetail } = require('./Journal');
 const { PurchaseRequest, PurchaseRequestDetail } = require('./PurchaseRequest');
-const { Purchase, PurchaseDetail, PurchasePayment } = require('./Purchase');
+const { Purchase, PurchaseDetail, PurchasePayment, PurchasePaymentDetail } = require('./Purchase');
 const { GoodsReceipt, GoodsReceiptDetail } = require('./GoodsReceipt');
-const { Sale, SaleDetail, SalePayment } = require('./Sale');
+const { Sale, SaleDetail, SalePayment, SalePaymentDetail } = require('./Sale');
 const CashTransaction = require('./CashTransaction');
 const StockAdjustment = require('./StockAdjustment');
 const StockAdjustmentDetail = require('./StockAdjustmentDetail');
@@ -50,9 +50,13 @@ PurchaseDetail.belongsTo(Purchase, { foreignKey: 'purchase_id' });
 Purchase.hasMany(PurchaseDetail, { foreignKey: 'purchase_id', as: 'details' });
 PurchaseDetail.belongsTo(RawMaterial, { foreignKey: 'item_id', as: 'rawMaterial' });
 PurchaseDetail.belongsTo(Product, { foreignKey: 'item_id', as: 'product' });
-PurchasePayment.belongsTo(Purchase, { foreignKey: 'purchase_id' });
-Purchase.hasMany(PurchasePayment, { foreignKey: 'purchase_id', as: 'payments' });
+PurchasePayment.belongsTo(Supplier, { foreignKey: 'supplier_id', as: 'supplier' });
+PurchasePayment.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
 PurchasePayment.belongsTo(ChartOfAccount, { foreignKey: 'account_id', as: 'account' });
+PurchasePayment.hasMany(PurchasePaymentDetail, { foreignKey: 'purchase_payment_id', as: 'details' });
+PurchasePaymentDetail.belongsTo(PurchasePayment, { foreignKey: 'purchase_payment_id', as: 'payment' });
+PurchasePaymentDetail.belongsTo(Purchase, { foreignKey: 'purchase_id', as: 'purchase' });
+Purchase.hasMany(PurchasePaymentDetail, { foreignKey: 'purchase_id', as: 'paymentDetails' });
 
 // Goods Receipt
 GoodsReceipt.belongsTo(Purchase, { foreignKey: 'purchase_id', as: 'purchase' });
@@ -72,9 +76,13 @@ Position.hasMany(Employee, { foreignKey: 'position_id', as: 'employees' });
 SaleDetail.belongsTo(Sale, { foreignKey: 'sale_id' });
 Sale.hasMany(SaleDetail, { foreignKey: 'sale_id', as: 'details' });
 SaleDetail.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
-SalePayment.belongsTo(Sale, { foreignKey: 'sale_id' });
-Sale.hasMany(SalePayment, { foreignKey: 'sale_id', as: 'payments' });
+SalePayment.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
+SalePayment.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
 SalePayment.belongsTo(ChartOfAccount, { foreignKey: 'account_id', as: 'account' });
+SalePayment.hasMany(SalePaymentDetail, { foreignKey: 'sale_payment_id', as: 'details' });
+SalePaymentDetail.belongsTo(SalePayment, { foreignKey: 'sale_payment_id', as: 'payment' });
+SalePaymentDetail.belongsTo(Sale, { foreignKey: 'sale_id', as: 'sale' });
+Sale.hasMany(SalePaymentDetail, { foreignKey: 'sale_id', as: 'paymentDetails' });
 
 // Journal
 Journal.hasMany(JournalDetail, { foreignKey: 'journal_id', as: 'details' });
@@ -124,9 +132,9 @@ module.exports = {
     Unit, Product, RawMaterial, Supplier, Customer, Salesman, Position, Employee, ChartOfAccount,
     Journal, JournalDetail,
     PurchaseRequest, PurchaseRequestDetail,
-    Purchase, PurchaseDetail, PurchasePayment,
+    Purchase, PurchaseDetail, PurchasePayment, PurchasePaymentDetail,
     GoodsReceipt, GoodsReceiptDetail,
-    Sale, SaleDetail, SalePayment,
+    Sale, SaleDetail, SalePayment, SalePaymentDetail,
     CashTransaction, StockAdjustment, StockAdjustmentDetail,
     StockMovement,
     MaterialIssue, MaterialIssueDetail,

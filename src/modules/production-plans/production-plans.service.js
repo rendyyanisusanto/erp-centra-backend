@@ -226,13 +226,24 @@ const approveProductionPlan = async (id, approvedBy) => {
     return getProductionPlanById(id);
 };
 
-const cancelProductionPlan = async (id) => {
+const cancelProductionPlan = async (id, cancelledBy, cancelReason) => {
     const plan = await ProductionPlan.findByPk(id);
     if (!plan) throw { status: 404, message: 'Production plan not found.' };
-    if (plan.status === STATUS.APPROVED) throw { status: 400, message: 'Approved production plan cannot be cancelled.' };
-    if (plan.status === STATUS.CANCELLED) throw { status: 400, message: 'Production plan is already cancelled.' };
+    if (plan.status !== STATUS.APPROVED) throw { status: 400, message: 'Hanya production plan APPROVED yang bisa dibatalkan.' };
 
+    const usedInApprovedReceipt = await FinishedGoodsReceiptDetail.count({
+        include: [
+            { model: FinishedGoodsReceipt, as: 'receipt', required: true, where: { status: STATUS.APPROVED }, attributes: [] },
+            { model: ProductionPlanDetail, as: 'productionPlanDetail', required: true, where: { production_plan_id: plan.id }, attributes: [] },
+        ],
+    });
+    if (usedInApprovedReceipt > 0) {
+        throw { status: 400, message: 'Production plan tidak bisa dibatalkan karena sudah dipakai pada penerimaan barang jadi APPROVED.' };
+    }
     plan.status = STATUS.CANCELLED;
+    plan.cancelled_by = cancelledBy;
+    plan.cancelled_at = new Date();
+    plan.cancel_reason = cancelReason || null;
     await plan.save();
     return plan;
 };
