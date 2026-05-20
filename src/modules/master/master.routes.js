@@ -24,6 +24,7 @@ router.delete('/users/:id', perm('user.create'), c.deleteUser);
 
 // Units
 router.get('/units', perm('unit.read'), c.getUnits);
+router.get('/item-unit-conversions', perm('unit.read'), c.getItemUnitConversions);
 router.post('/units', perm('unit.create'), c.createUnit);
 router.put('/units/:id', perm('unit.create'), c.updateUnit);
 router.delete('/units/:id', perm('unit.create'), c.deleteUnit);

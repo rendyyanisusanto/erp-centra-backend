@@ -1,10 +1,12 @@
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
+const sequelize = require('../../config/database');
 const {
     Role, Permission, RolePermission, User,
-    Unit, Product, RawMaterial, Supplier, Customer, Salesman, Position, Employee,
+    Unit, Product, RawMaterial, ItemUnitConversion, Supplier, Customer, Salesman, Position, Employee,
     ChartOfAccount, StockMovement, Sale,
 } = require('../../models');
+const { ITEM_TYPES, normalizeItemType } = require('../../utils/unit-conversion');
 
 const paginate = (page, limit) => {
     const p = Math.max(1, parseInt(page) || 1);
@@ -133,6 +135,48 @@ const deleteUnit = async (id) => {
 };
 
 // ====== PRODUCTS ======
+const validateItemConversions = ({ conversions, base_unit_id }) => {
+    const baseUnitId = Number(base_unit_id);
+    if (!Number.isInteger(baseUnitId) || baseUnitId <= 0) {
+        throw { status: 400, message: 'base_unit_id is required.' };
+    }
+    if (!Array.isArray(conversions) || conversions.length < 1) {
+        throw { status: 400, message: 'At least one unit conversion is required.' };
+    }
+    const seen = new Set();
+    let baseCount = 0;
+    const rows = conversions.map((c) => {
+        const unitId = Number(c.unit_id);
+        const conversionQty = Number(c.conversion_qty);
+        const isBase = ['true', '1', 1, true].includes(c.is_base) || unitId === baseUnitId;
+        if (!Number.isInteger(unitId) || unitId <= 0) throw { status: 400, message: 'conversion unit_id is invalid.' };
+        if (!Number.isFinite(conversionQty) || conversionQty <= 0) throw { status: 400, message: 'conversion_qty must be greater than 0.' };
+        if (seen.has(unitId)) throw { status: 400, message: 'Duplicate unit conversion in same item.' };
+        seen.add(unitId);
+        if (isBase) baseCount += 1;
+        return { unit_id: unitId, conversion_qty: conversionQty, is_base: isBase };
+    });
+    if (!rows.some((r) => r.unit_id === baseUnitId)) rows.push({ unit_id: baseUnitId, conversion_qty: 1, is_base: true });
+    if (baseCount > 1) throw { status: 400, message: 'is_base must be exactly one unit.' };
+    rows.forEach((r) => {
+        if (r.unit_id === baseUnitId) {
+            r.is_base = true;
+            r.conversion_qty = 1;
+        } else if (r.is_base) {
+            r.is_base = false;
+        }
+    });
+    return rows;
+};
+
+const syncItemConversions = async ({ item_type, item_id, conversions, transaction }) => {
+    await ItemUnitConversion.destroy({ where: { item_type, item_id }, transaction });
+    await ItemUnitConversion.bulkCreate(
+        conversions.map((c) => ({ item_type, item_id, unit_id: c.unit_id, conversion_qty: c.conversion_qty, is_base: c.is_base })),
+        { transaction }
+    );
+};
+
 const getProducts = async ({ page, limit, search }) => {
     const { offset, limit: l } = paginate(page, limit);
     const where = searchWhere(search, ['name']);
@@ -140,18 +184,44 @@ const getProducts = async ({ page, limit, search }) => {
     return { total: count, page: parseInt(page) || 1, data: rows };
 };
 
-const createProduct = async ({ name, unit_id, stock, min_stock }) => {
+const createProduct = async ({ name, base_unit_id, unit_id, stock, min_stock, conversions }) => {
     if (!name) throw { status: 400, message: 'Product name is required.' };
-    return await Product.create({ name, unit_id, stock: stock || 0, min_stock: min_stock || 0 });
+    const resolvedBaseUnitId = base_unit_id || unit_id;
+    const normalizedConversions = validateItemConversions({ conversions: conversions || [{ unit_id: resolvedBaseUnitId, conversion_qty: 1, is_base: true }], base_unit_id: resolvedBaseUnitId });
+    const t = await sequelize.transaction();
+    try {
+        const product = await Product.create({ name, base_unit_id: resolvedBaseUnitId, stock: stock || 0, min_stock: min_stock || 0 }, { transaction: t });
+        await syncItemConversions({ item_type: ITEM_TYPES.PRODUCT, item_id: product.id, conversions: normalizedConversions, transaction: t });
+        await t.commit();
+        return product;
+    } catch (err) {
+        await t.rollback();
+        throw err;
+    }
 };
 
-const updateProduct = async (id, { name, unit_id, min_stock }) => {
+const updateProduct = async (id, { name, base_unit_id, unit_id, min_stock, conversions }) => {
     const product = await Product.findByPk(id);
     if (!product) throw { status: 404, message: 'Product not found.' };
     if (name) product.name = name;
-    if (unit_id !== undefined) product.unit_id = unit_id;
+    const resolvedBaseUnitId = base_unit_id !== undefined ? base_unit_id : unit_id;
+    if (resolvedBaseUnitId !== undefined) product.base_unit_id = resolvedBaseUnitId;
     if (min_stock !== undefined) product.min_stock = min_stock;
-    await product.save();
+    const t = await sequelize.transaction();
+    try {
+        await product.save({ transaction: t });
+        if (conversions !== undefined || resolvedBaseUnitId !== undefined) {
+            const normalizedConversions = validateItemConversions({
+                conversions: conversions || [{ unit_id: product.base_unit_id, conversion_qty: 1, is_base: true }],
+                base_unit_id: resolvedBaseUnitId !== undefined ? resolvedBaseUnitId : product.base_unit_id,
+            });
+            await syncItemConversions({ item_type: ITEM_TYPES.PRODUCT, item_id: product.id, conversions: normalizedConversions, transaction: t });
+        }
+        await t.commit();
+    } catch (err) {
+        await t.rollback();
+        throw err;
+    }
     return product;
 };
 
@@ -169,35 +239,70 @@ const getRawMaterials = async ({ page, limit, search }) => {
     return { total: count, page: parseInt(page) || 1, data: rows };
 };
 
-const createRawMaterial = async ({ name, unit_id, stock, min_stock }) => {
+const createRawMaterial = async ({ name, base_unit_id, unit_id, stock, min_stock, conversions }) => {
     if (!name) throw { status: 400, message: 'Raw material name is required.' };
-    const rm = await RawMaterial.create({ name, unit_id, stock: stock || 0, min_stock: min_stock || 0 });
+    const resolvedBaseUnitId = base_unit_id || unit_id;
+    const normalizedConversions = validateItemConversions({ conversions: conversions || [{ unit_id: resolvedBaseUnitId, conversion_qty: 1, is_base: true }], base_unit_id: resolvedBaseUnitId });
+    const t = await sequelize.transaction();
+    let rm;
+    try {
+        rm = await RawMaterial.create({ name, base_unit_id: resolvedBaseUnitId, stock: stock || 0, min_stock: min_stock || 0 }, { transaction: t });
+        await syncItemConversions({ item_type: ITEM_TYPES.RAW_MATERIAL, item_id: rm.id, conversions: normalizedConversions, transaction: t });
 
-    // Record OPENING_BALANCE stock movement if initial stock > 0
-    if (Number(stock) > 0) {
-        await StockMovement.create({
-            item_type: 'RAW_MATERIAL',
-            item_id: rm.id,
-            transaction_date: new Date(),
-            reference_type: 'OPENING_BALANCE',
-            reference_id: rm.id,
-            qty_in: Number(stock),
-            qty_out: 0,
-            note: `Opening balance for ${name}`,
-        });
+        if (Number(stock) > 0) {
+            await StockMovement.create({
+                item_type: 'RAW_MATERIAL',
+                item_id: rm.id,
+                transaction_date: new Date(),
+                reference_type: 'OPENING_BALANCE',
+                reference_id: rm.id,
+                qty_in: Number(stock),
+                qty_out: 0,
+                note: `Opening balance for ${name}`,
+            }, { transaction: t });
+        }
+        await t.commit();
+    } catch (err) {
+        await t.rollback();
+        throw err;
     }
-
     return rm;
 };
 
-const updateRawMaterial = async (id, { name, unit_id, min_stock }) => {
+const updateRawMaterial = async (id, { name, base_unit_id, unit_id, min_stock, conversions }) => {
     const rm = await RawMaterial.findByPk(id);
     if (!rm) throw { status: 404, message: 'Raw material not found.' };
     if (name) rm.name = name;
-    if (unit_id !== undefined) rm.unit_id = unit_id;
+    const resolvedBaseUnitId = base_unit_id !== undefined ? base_unit_id : unit_id;
+    if (resolvedBaseUnitId !== undefined) rm.base_unit_id = resolvedBaseUnitId;
     if (min_stock !== undefined) rm.min_stock = min_stock;
-    await rm.save();
+    const t = await sequelize.transaction();
+    try {
+        await rm.save({ transaction: t });
+        if (conversions !== undefined || resolvedBaseUnitId !== undefined) {
+            const normalizedConversions = validateItemConversions({
+                conversions: conversions || [{ unit_id: rm.base_unit_id, conversion_qty: 1, is_base: true }],
+                base_unit_id: resolvedBaseUnitId !== undefined ? resolvedBaseUnitId : rm.base_unit_id,
+            });
+            await syncItemConversions({ item_type: ITEM_TYPES.RAW_MATERIAL, item_id: rm.id, conversions: normalizedConversions, transaction: t });
+        }
+        await t.commit();
+    } catch (err) {
+        await t.rollback();
+        throw err;
+    }
     return rm;
+};
+
+const getItemUnitConversions = async ({ item_type, item_id }) => {
+    const normalizedType = normalizeItemType(item_type);
+    if (!Object.values(ITEM_TYPES).includes(normalizedType)) throw { status: 400, message: 'item_type is invalid.' };
+    if (!Number(item_id)) throw { status: 400, message: 'item_id is required.' };
+    return ItemUnitConversion.findAll({
+        where: { item_type: normalizedType, item_id: Number(item_id) },
+        include: [{ model: Unit, as: 'unit' }],
+        order: [['is_base', 'DESC'], ['id', 'ASC']],
+    });
 };
 
 const deleteRawMaterial = async (id) => {
@@ -625,6 +730,7 @@ module.exports = {
     getPermissions, createPermission,
     getUsers, createUser, updateUser, deleteUser,
     getUnits, createUnit, updateUnit, deleteUnit,
+    getItemUnitConversions,
     getProducts, createProduct, updateProduct, deleteProduct,
     getRawMaterials, createRawMaterial, updateRawMaterial, deleteRawMaterial,
     getSuppliers, createSupplier, updateSupplier, deleteSupplier,

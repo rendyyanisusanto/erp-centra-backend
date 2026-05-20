@@ -123,7 +123,7 @@ const getProductionPlanById = async (id) => {
             {
                 model: ProductionPlanDetail,
                 as: 'details',
-                include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'unit_id'] }],
+                include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'base_unit_id'] }],
             },
         ],
         order: [[{ model: ProductionPlanDetail, as: 'details' }, 'id', 'ASC']],

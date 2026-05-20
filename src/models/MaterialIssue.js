@@ -26,6 +26,8 @@ const MaterialIssueDetail = sequelize.define('material_issue_details', {
     raw_material_id: { type: DataTypes.INTEGER, allowNull: false },
     qty: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
     unit_id: { type: DataTypes.INTEGER, allowNull: false },
+    conversion_qty: { type: DataTypes.DECIMAL(15, 2), allowNull: false, defaultValue: 1 },
+    base_qty: { type: DataTypes.DECIMAL(15, 2), allowNull: false, defaultValue: 0 },
     note: { type: DataTypes.TEXT },
 }, { timestamps: false });
 

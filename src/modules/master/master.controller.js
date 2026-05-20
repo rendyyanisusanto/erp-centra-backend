@@ -25,6 +25,7 @@ exports.deleteUser = handler(req => masterService.deleteUser(req.params.id));
 
 // UNITS
 exports.getUnits = handler(req => masterService.getUnits(req.query));
+exports.getItemUnitConversions = handler(req => masterService.getItemUnitConversions(req.query));
 exports.createUnit = handler(req => masterService.createUnit(req.body));
 exports.updateUnit = handler(req => masterService.updateUnit(req.params.id, req.body));
 exports.deleteUnit = handler(req => masterService.deleteUnit(req.params.id));

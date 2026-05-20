@@ -24,6 +24,9 @@ const FinishedGoodsReceiptDetail = sequelize.define('finished_goods_receipt_deta
     production_plan_detail_id: { type: DataTypes.INTEGER },
     product_id: { type: DataTypes.INTEGER, allowNull: false },
     qty_received: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+    unit_id: { type: DataTypes.INTEGER },
+    conversion_qty: { type: DataTypes.DECIMAL(15, 2), allowNull: false, defaultValue: 1 },
+    base_qty_received: { type: DataTypes.DECIMAL(15, 2), allowNull: false, defaultValue: 0 },
     note: { type: DataTypes.TEXT },
 }, { timestamps: false });
 

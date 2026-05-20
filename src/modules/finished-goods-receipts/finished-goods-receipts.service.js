@@ -6,9 +6,11 @@ const {
     ProductionPlanDetail,
     ProductionPlan,
     Product,
+    Unit,
     User,
     StockMovement,
 } = require('../../models');
+const { resolveConversion } = require('../../utils/unit-conversion');
 
 const STATUS = {
     DRAFT: 'DRAFT',
@@ -101,6 +103,12 @@ const validateDetailRows = async (details, transaction, options = {}) => {
         if (!Number.isFinite(qtyReceived) || qtyReceived <= 0) {
             throw { status: 400, message: 'qty_received must be greater than 0.' };
         }
+        const conversion = await resolveConversion({
+            item_type: 'PRODUCT',
+            item_id: productId,
+            unit_id: d.unit_id,
+            qty: qtyReceived,
+        }, transaction);
 
         const product = await Product.findByPk(productId, { transaction, attributes: ['id', 'name'] });
         if (!product) throw { status: 400, message: `Product with id ${productId} not found.` };
@@ -147,6 +155,9 @@ const validateDetailRows = async (details, transaction, options = {}) => {
             production_plan_detail_id: productionPlanDetailId,
             product_id: productId,
             qty_received: qtyReceived,
+            unit_id: conversion.unit_id,
+            conversion_qty: conversion.conversion_qty,
+            base_qty_received: conversion.base_qty,
             note: d.note ? String(d.note).trim() : null,
         });
     }
@@ -198,6 +209,7 @@ const getFinishedGoodsReceiptById = async (id) => {
                         attributes: ['id', 'production_code', 'production_date', 'planned_qty', 'realized_qty'],
                         include: [{ model: ProductionPlan, as: 'plan', attributes: ['id', 'plan_number'] }],
                     },
+                    { model: Unit, as: 'unit', attributes: ['id', 'name'] },
                 ],
             },
         ],
@@ -313,7 +325,7 @@ const approveFinishedGoodsReceipt = async (id, approvedBy) => {
 
             if (!product) throw { status: 400, message: `Product with id ${d.product_id} not found.` };
 
-            const newStock = Number(product.stock || 0) + Number(d.qty_received || 0);
+            const newStock = Number(product.stock || 0) + Number(d.base_qty_received || 0);
             product.stock = newStock;
             await product.save({ transaction: t });
 
@@ -323,7 +335,7 @@ const approveFinishedGoodsReceipt = async (id, approvedBy) => {
                 transaction_date: receipt.date,
                 reference_type: 'FINISHED_GOODS_RECEIPT',
                 reference_id: receipt.id,
-                qty_in: Number(d.qty_received || 0),
+                qty_in: Number(d.base_qty_received || 0),
                 qty_out: 0,
                 note: d.note || receipt.description || `Finished goods receipt ${receipt.receipt_number}`,
             }, { transaction: t });
@@ -356,10 +368,10 @@ const cancelFinishedGoodsReceipt = async (id, cancelledBy, cancelReason) => {
                 lock: t.LOCK.UPDATE,
             });
             if (!product) throw { status: 400, message: `Product with id ${detail.product_id} not found.` };
-            if (Number(product.stock || 0) < Number(detail.qty_received || 0)) {
+            if (Number(product.stock || 0) < Number(detail.base_qty_received || 0)) {
                 throw { status: 400, message: `Stok ${product.name} tidak cukup untuk reversal cancel.` };
             }
-            product.stock = Number(product.stock || 0) - Number(detail.qty_received || 0);
+            product.stock = Number(product.stock || 0) - Number(detail.base_qty_received || 0);
             await product.save({ transaction: t });
 
             await StockMovement.create({
@@ -369,7 +381,7 @@ const cancelFinishedGoodsReceipt = async (id, cancelledBy, cancelReason) => {
                 reference_type: 'FINISHED_GOODS_RECEIPT_CANCEL',
                 reference_id: receipt.id,
                 qty_in: 0,
-                qty_out: Number(detail.qty_received || 0),
+                qty_out: Number(detail.base_qty_received || 0),
                 note: `Reversal finished goods receipt ${receipt.receipt_number}`,
             }, { transaction: t });
         }

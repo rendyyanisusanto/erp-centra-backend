@@ -5,6 +5,7 @@ const {
     RawMaterial, Unit, User, Employee, Position,
     StockMovement,
 } = require('../../models');
+const { resolveConversion } = require('../../utils/unit-conversion');
 
 const STATUS = {
     DRAFT: 'DRAFT',
@@ -49,36 +50,33 @@ const validateDetailsPayload = async (details, transaction) => {
 
     for (const row of details) {
         const rawMaterialId = Number(row.raw_material_id);
-        const unitId = Number(row.unit_id);
         const qty = Number(row.qty);
 
         if (!Number.isInteger(rawMaterialId) || rawMaterialId <= 0) {
             throw { status: 400, message: 'raw_material_id is required and must be valid.' };
-        }
-        if (!Number.isInteger(unitId) || unitId <= 0) {
-            throw { status: 400, message: 'unit_id is required and must be valid.' };
         }
         if (!Number.isFinite(qty) || qty <= 0) {
             throw { status: 400, message: 'qty must be greater than 0.' };
         }
 
         const rawMaterial = await RawMaterial.findByPk(rawMaterialId, {
-            attributes: ['id', 'name', 'unit_id', 'stock'],
+            attributes: ['id', 'name', 'base_unit_id', 'stock'],
             transaction,
         });
         if (!rawMaterial) throw { status: 400, message: `Raw material with id ${rawMaterialId} not found.` };
-
-        const unit = await Unit.findByPk(unitId, { attributes: ['id', 'name'], transaction });
-        if (!unit) throw { status: 400, message: `Unit with id ${unitId} not found.` };
-
-        if (rawMaterial.unit_id && Number(rawMaterial.unit_id) !== unitId) {
-            throw { status: 400, message: `Unit for raw material "${rawMaterial.name}" must match its default unit.` };
-        }
+        const conversion = await resolveConversion({
+            item_type: 'RAW_MATERIAL',
+            item_id: rawMaterialId,
+            unit_id: row.unit_id,
+            qty,
+        }, transaction);
 
         normalized.push({
             raw_material_id: rawMaterialId,
-            unit_id: unitId,
+            unit_id: conversion.unit_id,
             qty,
+            conversion_qty: conversion.conversion_qty,
+            base_qty: conversion.base_qty,
             note: row.note ? String(row.note).trim() : null,
         });
     }
@@ -162,7 +160,7 @@ const getMaterialIssueById = async (id) => {
                 model: MaterialIssueDetail,
                 as: 'details',
                 include: [
-                    { model: RawMaterial, as: 'rawMaterial', attributes: ['id', 'name', 'unit_id', 'stock'] },
+                    { model: RawMaterial, as: 'rawMaterial', attributes: ['id', 'name', 'base_unit_id', 'stock'] },
                     { model: Unit, as: 'unit', attributes: ['id', 'name'] },
                 ],
             },
@@ -309,7 +307,7 @@ const approveMaterialIssue = async (id, approvedBy) => {
             }
 
             const currentStock = Number(rawMaterial.stock || 0);
-            const qtyOut = Number(detail.qty || 0);
+            const qtyOut = Number(detail.base_qty || 0);
 
             if (currentStock < qtyOut) {
                 throw { status: 400, message: `Insufficient stock for raw material "${rawMaterial.name}".` };
@@ -358,7 +356,7 @@ const cancelMaterialIssue = async (id, cancelledBy, cancelReason) => {
             });
             if (!rawMaterial) throw { status: 400, message: `Raw material with id ${detail.raw_material_id} not found.` };
 
-            rawMaterial.stock = Number(rawMaterial.stock || 0) + Number(detail.qty || 0);
+            rawMaterial.stock = Number(rawMaterial.stock || 0) + Number(detail.base_qty || 0);
             await rawMaterial.save({ transaction: t });
 
             await StockMovement.create({
@@ -367,7 +365,7 @@ const cancelMaterialIssue = async (id, cancelledBy, cancelReason) => {
                 transaction_date: new Date(),
                 reference_type: 'MATERIAL_ISSUE_CANCEL',
                 reference_id: issue.id,
-                qty_in: Number(detail.qty || 0),
+                qty_in: Number(detail.base_qty || 0),
                 qty_out: 0,
                 note: `Reversal material issue ${issue.issue_number}`,
             }, { transaction: t });

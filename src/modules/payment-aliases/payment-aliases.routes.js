@@ -17,6 +17,7 @@ router.post('/purchase-payments/:id/approve', perm('purchase-payment.create'), p
 router.post('/purchase-payments/:id/cancel', perm('purchase-payment.create'), purchaseController.cancelPurchasePayment);
 router.get('/purchase-payments/supplier/:supplier_id/outstanding', perm('purchase-payment.read'), purchaseController.getOutstandingPurchasesBySupplier);
 router.get('/purchases/outstanding', perm('purchase-payment.read'), purchaseController.getOutstandingPurchasesBySupplier);
+router.post('/purchase-requests/:id/convert-to-purchase', perm('purchase.create'), purchaseController.convertPurchaseRequestToPurchase);
 
 // Sale payments aliases
 router.get('/sale-payments', perm('sales.read'), salesController.getSalePayments);

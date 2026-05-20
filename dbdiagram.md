@@ -15,7 +15,7 @@ Table users {
 
 Table permissions {
   id int [pk, increment]
-  name varchar  // example: purchase.create
+  name varchar
   module varchar
   created_at datetime
 }
@@ -43,7 +43,7 @@ Table employees {
   address text [null]
   position_id int
   basic_salary decimal [null]
-  status varchar   // ACTIVE, INACTIVE
+  status varchar
   created_at datetime
 }
 
@@ -65,13 +65,14 @@ Table customers {
 
 Table units {
   id int [pk, increment]
+  code varchar
   name varchar
 }
 
 Table products {
   id int [pk, increment]
   name varchar
-  unit_id int
+  base_unit_id int
   stock decimal
   min_stock decimal
   created_at datetime
@@ -80,18 +81,28 @@ Table products {
 Table raw_materials {
   id int [pk, increment]
   name varchar
-  unit_id int
+  base_unit_id int
   stock decimal
   min_stock decimal
   created_at datetime
 }
 
+Table item_unit_conversions {
+  id int [pk, increment]
+  item_type varchar
+  item_id int
+  unit_id int
+  conversion_qty decimal
+  is_base boolean
+  created_at datetime
+}
+
 Table stock_movements {
   id int [pk, increment]
-  item_type varchar   // RAW_MATERIAL / PRODUCT
+  item_type varchar
   item_id int
   transaction_date datetime
-  reference_type varchar  // PURCHASE, SALES, STOCK_ADJUSTMENT, MATERIAL_ISSUE, FINISHED_GOODS_RECEIPT
+  reference_type varchar
   reference_id int
   qty_in decimal
   qty_out decimal
@@ -128,7 +139,10 @@ Table purchase_requests {
   request_number varchar
   date datetime
   description text
-  status varchar   // DRAFT, APPROVED, CANCELLED
+
+  status varchar          // DRAFT, APPROVED, CANCELLED
+  process_status varchar  // PENDING, PARTIAL, CONVERTED
+
   created_by int
   approved_by int [null]
   approved_at datetime [null]
@@ -142,7 +156,15 @@ Table purchase_request_details {
   id int [pk, increment]
   purchase_request_id int
   raw_material_id int
+
   qty decimal
+  unit_id int
+  conversion_qty decimal
+  base_qty decimal
+
+  po_qty decimal
+  po_base_qty decimal
+
   note text
 }
 
@@ -152,9 +174,12 @@ Table purchases {
   date datetime
   total_amount decimal
   purchase_request_id int [null]
+
   status varchar          // DRAFT, APPROVED, CANCELLED
   payment_status varchar  // UNPAID, PARTIAL, PAID
+
   description varchar
+
   created_by int
   approved_by int [null]
   approved_at datetime [null]
@@ -167,9 +192,16 @@ Table purchases {
 Table purchase_details {
   id int [pk, increment]
   purchase_id int
+  purchase_request_detail_id int [null]
+
   item_type varchar
   item_id int
+
   qty decimal
+  unit_id int
+  conversion_qty decimal
+  base_qty decimal
+
   price decimal
   subtotal decimal
 }
@@ -182,7 +214,9 @@ Table purchase_payments {
   total_amount decimal
   account_id int
   note text [null]
+
   status varchar   // DRAFT, APPROVED, CANCELLED
+
   created_by int
   approved_by int [null]
   approved_at datetime [null]
@@ -206,7 +240,9 @@ Table goods_receipts {
   purchase_id int
   date datetime
   total_amount decimal
+
   status varchar   // DRAFT, APPROVED, CANCELLED
+
   created_by int
   approved_by int [null]
   approved_at datetime [null]
@@ -220,7 +256,12 @@ Table goods_receipt_details {
   id int [pk, increment]
   goods_receipt_id int
   raw_material_id int
+
   qty_received decimal
+  unit_id int
+  conversion_qty decimal
+  base_qty_received decimal
+
   price decimal
   subtotal decimal
 }
@@ -230,11 +271,14 @@ Table sales {
   customer_id int
   date datetime
   total_amount decimal
+
   status varchar          // DRAFT, APPROVED, CANCELLED
   payment_status varchar  // UNPAID, PARTIAL, PAID
+
   description varchar
   license_plate varchar
   salesman_id int [null]
+
   created_by int
   approved_by int [null]
   approved_at datetime [null]
@@ -248,7 +292,12 @@ Table sale_details {
   id int [pk, increment]
   sale_id int
   product_id int
+
   qty decimal
+  unit_id int
+  conversion_qty decimal
+  base_qty decimal
+
   price decimal
   subtotal decimal
 }
@@ -271,7 +320,9 @@ Table sale_payments {
   total_amount decimal
   account_id int
   note text [null]
+
   status varchar   // DRAFT, APPROVED, CANCELLED
+
   created_by int
   approved_by int [null]
   approved_at datetime [null]
@@ -296,7 +347,9 @@ Table cash_transactions {
   amount decimal
   account_debit_id int
   account_credit_id int
+
   status varchar   // DRAFT, APPROVED, CANCELLED
+
   created_by int
   approved_by int [null]
   approved_at datetime [null]
@@ -314,7 +367,9 @@ Table stock_adjustments {
   qty_real decimal
   difference decimal
   date datetime
+
   status varchar   // DRAFT, APPROVED, CANCELLED
+
   created_by int
   approved_by int [null]
   approved_at datetime [null]
@@ -327,7 +382,7 @@ Table stock_adjustments {
 Table stock_adjustment_details {
   id int [pk, increment]
   stock_adjustment_id int
-  item_type varchar   // RAW or PRODUCT
+  item_type varchar
   item_id int
   qty_system decimal
   qty_real decimal
@@ -342,8 +397,11 @@ Table material_issues {
   year int
   department varchar
   recipient_employee_id int
+
   status varchar   // DRAFT, APPROVED, CANCELLED
+
   description text [null]
+
   created_by int
   approved_by int [null]
   approved_at datetime [null]
@@ -357,8 +415,12 @@ Table material_issue_details {
   id int [pk, increment]
   material_issue_id int
   raw_material_id int
+
   qty decimal
   unit_id int
+  conversion_qty decimal
+  base_qty decimal
+
   note text [null]
 }
 
@@ -367,8 +429,11 @@ Table production_plans {
   plan_number varchar
   month int
   year int
+
   status varchar   // DRAFT, APPROVED, CANCELLED
+
   description text [null]
+
   created_by int
   approved_by int [null]
   approved_at datetime [null]
@@ -385,7 +450,7 @@ Table production_plan_details {
   production_date date
   product_id int
   planned_qty decimal
-  realized_qty decimal [default: 0]
+  realized_qty decimal
   note text [null]
 }
 
@@ -395,8 +460,11 @@ Table finished_goods_receipts {
   date datetime
   month int
   year int
+
   status varchar   // DRAFT, APPROVED, CANCELLED
+
   description text [null]
+
   created_by int
   approved_by int [null]
   approved_at datetime [null]
@@ -411,7 +479,12 @@ Table finished_goods_receipt_details {
   finished_goods_receipt_id int
   production_plan_detail_id int [null]
   product_id int
+
   qty_received decimal
+  unit_id int
+  conversion_qty decimal
+  base_qty_received decimal
+
   note text [null]
 }
 
@@ -427,14 +500,16 @@ Ref: role_permissions.permission_id > permissions.id
 
 Ref: employees.position_id > positions.id
 
-Ref: products.unit_id > units.id
-Ref: raw_materials.unit_id > units.id
+Ref: products.base_unit_id > units.id
+Ref: raw_materials.base_unit_id > units.id
+Ref: item_unit_conversions.unit_id > units.id
 
 Ref: purchase_requests.created_by > users.id
 Ref: purchase_requests.approved_by > users.id
 Ref: purchase_requests.cancelled_by > users.id
 Ref: purchase_request_details.purchase_request_id > purchase_requests.id
 Ref: purchase_request_details.raw_material_id > raw_materials.id
+Ref: purchase_request_details.unit_id > units.id
 
 Ref: purchases.purchase_request_id > purchase_requests.id
 Ref: purchases.supplier_id > suppliers.id
@@ -442,6 +517,8 @@ Ref: purchases.created_by > users.id
 Ref: purchases.approved_by > users.id
 Ref: purchases.cancelled_by > users.id
 Ref: purchase_details.purchase_id > purchases.id
+Ref: purchase_details.purchase_request_detail_id > purchase_request_details.id
+Ref: purchase_details.unit_id > units.id
 
 Ref: purchase_payments.supplier_id > suppliers.id
 Ref: purchase_payments.account_id > chart_of_accounts.id
@@ -457,14 +534,16 @@ Ref: goods_receipts.approved_by > users.id
 Ref: goods_receipts.cancelled_by > users.id
 Ref: goods_receipt_details.goods_receipt_id > goods_receipts.id
 Ref: goods_receipt_details.raw_material_id > raw_materials.id
+Ref: goods_receipt_details.unit_id > units.id
 
-Ref: sales.salesman_id > salesmens.id
 Ref: sales.customer_id > customers.id
+Ref: sales.salesman_id > salesmens.id
 Ref: sales.created_by > users.id
 Ref: sales.approved_by > users.id
 Ref: sales.cancelled_by > users.id
 Ref: sale_details.sale_id > sales.id
 Ref: sale_details.product_id > products.id
+Ref: sale_details.unit_id > units.id
 
 Ref: sale_payments.customer_id > customers.id
 Ref: sale_payments.account_id > chart_of_accounts.id
@@ -509,3 +588,4 @@ Ref: finished_goods_receipts.cancelled_by > users.id
 Ref: finished_goods_receipt_details.finished_goods_receipt_id > finished_goods_receipts.id
 Ref: finished_goods_receipt_details.production_plan_detail_id > production_plan_details.id
 Ref: finished_goods_receipt_details.product_id > products.id
+Ref: finished_goods_receipt_details.unit_id > units.id

@@ -7,6 +7,7 @@ const PurchaseRequest = sequelize.define('purchase_requests', {
     date: { type: DataTypes.DATEONLY, allowNull: false },
     description: { type: DataTypes.TEXT },
     status: { type: DataTypes.STRING, defaultValue: 'DRAFT' }, // DRAFT, APPROVED, CANCELLED
+    process_status: { type: DataTypes.STRING, defaultValue: 'PENDING' }, // PENDING, PARTIAL, CONVERTED
     created_by: { type: DataTypes.INTEGER },
     approved_by: { type: DataTypes.INTEGER, allowNull: true },
     approved_at: { type: DataTypes.DATE, allowNull: true },
@@ -21,6 +22,11 @@ const PurchaseRequestDetail = sequelize.define('purchase_request_details', {
     purchase_request_id: { type: DataTypes.INTEGER, allowNull: false },
     raw_material_id: { type: DataTypes.INTEGER, allowNull: false },
     qty: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+    unit_id: { type: DataTypes.INTEGER },
+    conversion_qty: { type: DataTypes.DECIMAL(15, 2), allowNull: false, defaultValue: 1 },
+    base_qty: { type: DataTypes.DECIMAL(15, 2), allowNull: false, defaultValue: 0 },
+    po_qty: { type: DataTypes.DECIMAL(15, 2), allowNull: false, defaultValue: 0 },
+    po_base_qty: { type: DataTypes.DECIMAL(15, 2), allowNull: false, defaultValue: 0 },
     note: { type: DataTypes.TEXT },
 }, { timestamps: false });
 

@@ -11,12 +11,14 @@ router.get('/requests', perm('purchase.read'), c.getPurchaseRequests);
 router.get('/requests/:id', perm('purchase.read'), c.getPurchaseRequestById);
 router.post('/requests', perm('purchase.create'), c.createPurchaseRequest);
 router.patch('/requests/:id/status', perm('purchase.approve'), c.updatePurchaseRequestStatus);
+router.post('/requests/:id/convert-to-purchase', perm('purchase.create'), c.convertPurchaseRequestToPurchase);
 
 // Purchase Orders
 router.get('/', perm('purchase.read'), c.getPurchases);
 router.get('/:id', perm('purchase.read'), c.getPurchaseById);
 router.post('/', perm('purchase.create'), c.createPurchase);
 router.put('/:id', perm('purchase.create'), c.updatePurchase);
+router.delete('/:id', perm('purchase.create'), c.deletePurchase);
 router.post('/:id/approve', perm('purchase.approve'), c.approvePurchase);
 router.post('/:id/cancel', perm('purchase.approve'), c.cancelPurchase);
 

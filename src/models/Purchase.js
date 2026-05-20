@@ -21,9 +21,13 @@ const Purchase = sequelize.define('purchases', {
 const PurchaseDetail = sequelize.define('purchase_details', {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
     purchase_id: { type: DataTypes.INTEGER, allowNull: false },
+    purchase_request_detail_id: { type: DataTypes.INTEGER, allowNull: true },
     item_type: { type: DataTypes.STRING, allowNull: false }, // raw_material or product
     item_id: { type: DataTypes.INTEGER, allowNull: false },
     qty: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+    unit_id: { type: DataTypes.INTEGER },
+    conversion_qty: { type: DataTypes.DECIMAL(15, 2), allowNull: false, defaultValue: 1 },
+    base_qty: { type: DataTypes.DECIMAL(15, 2), allowNull: false, defaultValue: 0 },
     price: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
     subtotal: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
 }, { timestamps: false });

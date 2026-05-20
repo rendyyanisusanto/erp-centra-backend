@@ -12,12 +12,14 @@ exports.getPurchaseRequests = handler(req => purchaseService.getPurchaseRequests
 exports.getPurchaseRequestById = handler(req => purchaseService.getPurchaseRequestById(req.params.id));
 exports.createPurchaseRequest = handler(req => purchaseService.createPurchaseRequest(req.body, req.user.id));
 exports.updatePurchaseRequestStatus = handler(req => purchaseService.updatePurchaseRequestStatus(req.params.id, req.body.status));
+exports.convertPurchaseRequestToPurchase = handler(req => purchaseService.convertPurchaseRequestToPurchase(req.params.id, req.body, req.user.id));
 
 // Purchase Order
 exports.getPurchases = handler(req => purchaseService.getPurchases(req.query));
 exports.getPurchaseById = handler(req => purchaseService.getPurchaseById(req.params.id));
 exports.createPurchase = handler(req => purchaseService.createPurchase(req.body, req.user.id));
 exports.updatePurchase = handler(req => purchaseService.updatePurchase(req.params.id, req.body));
+exports.deletePurchase = handler(req => purchaseService.deletePurchase(req.params.id));
 exports.approvePurchase = handler(req => purchaseService.approvePurchase(req.params.id, req.user.id));
 exports.cancelPurchase = handler(req => purchaseService.cancelPurchase(req.params.id, req.user.id, req.body?.cancel_reason));
 

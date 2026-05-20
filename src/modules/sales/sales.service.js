@@ -2,9 +2,10 @@ const { Op } = require('sequelize');
 const sequelize = require('../../config/database');
 const {
     Sale, SaleDetail, SalePayment, SalePaymentDetail,
-    Product, Customer, User, ChartOfAccount, Salesman,
+    Product, Unit, Customer, User, ChartOfAccount, Salesman,
     Journal, JournalDetail,
 } = require('../../models');
+const { resolveConversion } = require('../../utils/unit-conversion');
 
 const paginate = (page, limit) => {
     const p = Math.max(1, parseInt(page) || 1);
@@ -21,6 +22,23 @@ const normalizeOptionalId = (value) => {
 };
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const DOC_STATUS = { DRAFT: 'DRAFT', APPROVED: 'APPROVED', CANCELLED: 'CANCELLED' };
+const normalizeSaleDetails = async (details, transaction) => Promise.all(details.map(async (d) => {
+    const conversion = await resolveConversion({
+        item_type: 'PRODUCT',
+        item_id: d.product_id,
+        unit_id: d.unit_id,
+        qty: d.qty,
+    }, transaction);
+    return {
+        product_id: d.product_id,
+        qty: Number(d.qty),
+        unit_id: conversion.unit_id,
+        conversion_qty: conversion.conversion_qty,
+        base_qty: conversion.base_qty,
+        price: Number(d.price || 0),
+        subtotal: Number(d.qty) * Number(d.price || 0),
+    };
+}));
 
 const getSales = async ({ page, limit, search, status, date_from, date_to }) => {
     const { offset, limit: l } = paginate(page, limit);
@@ -53,7 +71,7 @@ const getSaleById = async (id) => {
             { model: Customer, as: 'customer' },
             { model: Salesman, as: 'salesman' },
             { model: User, as: 'creator', attributes: ['id', 'name'] },
-            { model: SaleDetail, as: 'details', include: [{ model: Product, as: 'product' }] },
+            { model: SaleDetail, as: 'details', include: [{ model: Unit, as: 'unit' }, { model: Product, as: 'product', include: [{ model: Unit, as: 'unit' }] }] },
             {
                 model: SalePaymentDetail,
                 as: 'paymentDetails',
@@ -81,7 +99,7 @@ const getSalePrintData = async (id) => {
             { model: Customer, as: 'customer' },
             { model: Salesman, as: 'salesman' },
             { model: User, as: 'creator', attributes: ['id', 'name'] },
-            { model: SaleDetail, as: 'details', include: [{ model: Product, as: 'product' }] },
+            { model: SaleDetail, as: 'details', include: [{ model: Unit, as: 'unit' }, { model: Product, as: 'product', include: [{ model: Unit, as: 'unit' }] }] },
         ],
         order: [[{ model: SaleDetail, as: 'details' }, 'id', 'ASC']],
     });
@@ -97,14 +115,14 @@ const createSale = async ({ customer_id, date, description, salesman_id, details
 
     const t = await sequelize.transaction();
     try {
-        const total_amount = details.reduce((sum, d) => sum + (Number(d.qty) * Number(d.price)), 0);
-        const detailsWithSubtotal = details.map(d => ({ ...d, subtotal: Number(d.qty) * Number(d.price) }));
+        const detailsWithSubtotal = await normalizeSaleDetails(details, t);
+        const total_amount = detailsWithSubtotal.reduce((sum, d) => sum + Number(d.subtotal), 0);
 
         // Validate stock
         for (const d of detailsWithSubtotal) {
             const product = await Product.findByPk(d.product_id, { transaction: t });
             if (!product) throw { status: 404, message: `Product ID ${d.product_id} not found.` };
-            if (Number(product.stock) < Number(d.qty)) throw { status: 400, message: `Insufficient stock for ${product.name}. Available: ${product.stock}` };
+            if (Number(product.stock) < Number(d.base_qty)) throw { status: 400, message: `Insufficient stock for ${product.name}. Available: ${product.stock}` };
         }
 
         // Resolve optional salesman: keep selected ID if valid, otherwise reject.
@@ -144,11 +162,10 @@ const updateSale = async (id, { customer_id, date, description, salesman_id, det
     if (!details || !details.length) throw { status: 400, message: 'At least one item is required.' };
 
     const normalizedSalesmanId = normalizeOptionalId(salesman_id);
-    const total_amount = details.reduce((sum, d) => sum + (Number(d.qty) * Number(d.price)), 0);
-    const detailsWithSubtotal = details.map(d => ({ ...d, subtotal: Number(d.qty) * Number(d.price) }));
-
     const t = await sequelize.transaction();
     try {
+        const detailsWithSubtotal = await normalizeSaleDetails(details, t);
+        const total_amount = detailsWithSubtotal.reduce((sum, d) => sum + Number(d.subtotal), 0);
         if (normalizedSalesmanId !== null) {
             const salesman = await Salesman.findByPk(normalizedSalesmanId, { transaction: t });
             if (!salesman) throw { status: 400, message: 'Invalid salesman_id. Please choose a valid salesman or leave it empty.' };
@@ -481,10 +498,10 @@ const approveSale = async (id, userId) => {
         for (const d of sale.details) {
             const product = await Product.findByPk(d.product_id, { transaction: t });
             if (!product) throw { status: 404, message: `Product ID ${d.product_id} not found.` };
-            if (Number(product.stock) < Number(d.qty)) throw { status: 400, message: `Stok ${product.name} tidak cukup.` };
+            if (Number(product.stock) < Number(d.base_qty)) throw { status: 400, message: `Stok ${product.name} tidak cukup.` };
         }
         for (const d of sale.details) {
-            await Product.decrement('stock', { by: d.qty, where: { id: d.product_id }, transaction: t });
+            await Product.decrement('stock', { by: Number(d.base_qty || 0), where: { id: d.product_id }, transaction: t });
         }
         const receivableAccount = await ChartOfAccount.findOne({ where: { code: '1200' } });
         const revenueAccount = await ChartOfAccount.findOne({ where: { code: '4100' } });
@@ -518,7 +535,7 @@ const cancelSale = async (id, userId, cancelReason) => {
     const t = await sequelize.transaction();
     try {
         for (const d of sale.details) {
-            await Product.increment('stock', { by: d.qty, where: { id: d.product_id }, transaction: t });
+            await Product.increment('stock', { by: Number(d.base_qty || 0), where: { id: d.product_id }, transaction: t });
         }
         const receivableAccount = await ChartOfAccount.findOne({ where: { code: '1200' } });
         const revenueAccount = await ChartOfAccount.findOne({ where: { code: '4100' } });
